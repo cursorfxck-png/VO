@@ -6,6 +6,7 @@ import ProfileEditModal from './ProfileEditModal'
 import SearchBar from './SearchBar'
 import LoadingSpinner from './LoadingSpinner'
 import Stories from './Stories'
+import { getCache, setCache, invalidateCache } from '../utils/cache'
 
 
 export default function Feed({ session, onViewProfile, onViewingStoryChange, isViewingStory = false }) {

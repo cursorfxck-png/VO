@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import googleLogoSvg from '../assets/google-logo.svg'
 
 export default function Auth() {
     const [loading, setLoading] = useState(false)
@@ -33,17 +32,6 @@ export default function Auth() {
             setMessage(error.message)
         } finally {
             setLoading(false)
-        }
-    }
-
-    const handleGoogleSignIn = async () => {
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-            })
-            if (error) throw error
-        } catch (error) {
-            setMessage(error.message)
         }
     }
 
@@ -87,29 +75,12 @@ export default function Auth() {
                         disabled={loading}
                         className="vogue-login-button"
                     >
-                        {loading ? 'Loading...' : 'Log in'}
+                        {loading ? 'Loading...' : isSignUp ? 'Sign up' : 'Log in'}
                     </button>
                 </form>
 
-                <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    className="vogue-google-button"
-                >
-                    <div className="google-logo-wrapper">
-                        <img src={googleLogoSvg} alt="Google" className="google-logo-icon" />
-                    </div>
-                    Log in with google
-                </button>
-
-                <div className="vogue-divider">
-                    <div className="vogue-divider-line"></div>
-                    <span className="vogue-divider-text">OR</span>
-                    <div className="vogue-divider-line"></div>
-                </div>
-
                 {message && (
-                    <div className={`vogue-message ${message.includes('error') || message.includes('Invalid') ? 'error' : 'success'}`}>
+                    <div className={`vogue-message ${message.includes('Check your email') ? 'success' : 'error'}`}>
                         {message}
                     </div>
                 )}

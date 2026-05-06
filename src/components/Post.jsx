@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import ImageZoomModal from './ImageZoomModal'
 import ShareModal from './ShareModal'
@@ -8,6 +9,7 @@ import { validateContent } from '../utils/contentModeration'
 import ContentWarningModal from './ContentWarningModal'
 
 export default function Post({ post, session, onViewProfile, onDelete }) {
+    const navigate = useNavigate()
     const [showImageZoom, setShowImageZoom] = useState(false)
     const [likesCount, setLikesCount] = useState(0)
     const [commentsCount, setCommentsCount] = useState(0)
@@ -21,11 +23,8 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [showContentWarning, setShowContentWarning] = useState(false)
     const [warningMessage, setWarningMessage] = useState('')
-
-    // Fetch profile data separately
     const [userProfile, setUserProfile] = useState(null)
     
-    // Check if this is user's own post
     const isOwnPost = session?.user?.id === post.user_id
 
     useEffect(() => {
@@ -53,15 +52,12 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
 
             if (data) {
                 setUserProfile(data)
-            } else {
-                console.error('No profile found for user:', post.user_id, error)
             }
         } catch (error) {
             console.error('Error fetching profile:', error)
         }
     }
 
-    // Get username and display name from fetched profile data
     const username = userProfile?.username || post.profiles?.username || 'user'
     const displayName = userProfile?.full_name || post.profiles?.full_name || 'User'
     const avatarUrl = userProfile?.avatar_url || post.profiles?.avatar_url || '/download.png'
@@ -74,8 +70,7 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 .eq('username', username)
                 .single()
             setIsVerified(!!data)
-        } catch (error) {
-            // User is not verified, that's fine
+        } catch {
             setIsVerified(false)
         }
     }
@@ -106,26 +101,19 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         setIsLiked(!!data)
     }
 
-    const toggleLike = async () => {
+    const toggleLike = async (e) => {
+        e.stopPropagation()
         if (!session) {
             alert('Please log in to like posts')
             return
         }
 
         if (isLiked) {
-            // Unlike
-            await supabase
-                .from('likes')
-                .delete()
-                .eq('post_id', post.id)
-                .eq('user_id', session.user.id)
+            await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', session.user.id)
             setIsLiked(false)
             setLikesCount(prev => prev - 1)
         } else {
-            // Like
-            await supabase
-                .from('likes')
-                .insert({ post_id: post.id, user_id: session.user.id })
+            await supabase.from('likes').insert({ post_id: post.id, user_id: session.user.id })
             setIsLiked(true)
             setLikesCount(prev => prev + 1)
         }
@@ -133,7 +121,6 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
 
     const fetchComments = async () => {
         try {
-            // Fetch comments
             const { data: commentsData, error } = await supabase
                 .from('comments')
                 .select('*')
@@ -141,27 +128,23 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 .order('created_at', { ascending: false })
 
             if (error) throw error
-
             if (!commentsData || commentsData.length === 0) {
                 setComments([])
                 return
             }
 
-            // Fetch profiles for all commenters
             const userIds = [...new Set(commentsData.map(c => c.user_id))]
             const { data: profilesData } = await supabase
                 .from('profiles')
                 .select('id, username, full_name, avatar_url')
                 .in('id', userIds)
 
-            // Fetch verified users
             const { data: verifiedData } = await supabase
                 .from('verified_users')
                 .select('username')
 
             const verifiedUsernames = new Set(verifiedData?.map(v => v.username) || [])
 
-            // Merge comments with profiles and verified status
             const commentsWithProfiles = commentsData.map(comment => {
                 const profile = profilesData?.find(p => p.id === comment.user_id)
                 return {
@@ -171,7 +154,6 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 }
             })
 
-            // Sort: verified users first, then by date
             const sortedComments = commentsWithProfiles.sort((a, b) => {
                 if (a.isVerified && !b.isVerified) return -1
                 if (!a.isVerified && b.isVerified) return 1
@@ -185,7 +167,8 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         }
     }
 
-    const handleCommentToggle = async () => {
+    const handleCommentToggle = async (e) => {
+        e.stopPropagation()
         if (!showComments) {
             await fetchComments()
         }
@@ -197,17 +180,17 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .trim()
-            .substring(0, 500) // Limit comment length
+            .substring(0, 500)
     }
 
-    const handleAddComment = async () => {
+    const handleAddComment = async (e) => {
+        if (e) e.stopPropagation()
         if (!session) {
             alert('Please log in to comment')
             return
         }
         if (!newComment.trim()) return
 
-        // Validate content for abusive words
         const validation = validateContent(newComment)
         if (!validation.isValid) {
             setWarningMessage(validation.message)
@@ -222,17 +205,10 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         try {
             const { data, error } = await supabase
                 .from('comments')
-                .insert([{
-                    post_id: post.id,
-                    user_id: session.user.id,
-                    content: sanitizedComment
-                }])
+                .insert([{ post_id: post.id, user_id: session.user.id, content: sanitizedComment }])
                 .select()
 
-            if (error) {
-                console.error('Comment error:', error)
-                throw error
-            }
+            if (error) throw error
 
             setNewComment('')
             setCommentsCount(prev => prev + 1)
@@ -245,12 +221,10 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         }
     }
 
-    // Parse content to extract location and clean text
     const parseContent = () => {
         let content = post.content || ''
         let locationData = null
 
-        // Extract location if present
         const locationMatch = content.match(/📍\s*(Lat:\s*[-\d.]+,\s*Long:\s*[-\d.]+)/)
         if (locationMatch) {
             locationData = locationMatch[1]
@@ -262,7 +236,8 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
 
     const { content: cleanContent, location: postLocation } = parseContent()
 
-    const openGoogleMaps = () => {
+    const openGoogleMaps = (e) => {
+        e.stopPropagation()
         if (postLocation) {
             const latMatch = postLocation.match(/Lat:\s*([-\d.]+)/)
             const longMatch = postLocation.match(/Long:\s*([-\d.]+)/)
@@ -274,19 +249,30 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         }
     }
 
-    const handleProfileClick = () => {
-        if (onViewProfile && post.user_id) {
+    const handleProfileClick = (e) => {
+        e.stopPropagation()
+        if (username) {
+            navigate(`/u/${username}`)
+        } else if (onViewProfile && post.user_id) {
             onViewProfile(post.user_id)
         }
     }
 
-    const handleCommentProfileClick = (userId) => {
-        if (onViewProfile && userId) {
+    const handleCommentProfileClick = (e, userId, uname) => {
+        e.stopPropagation()
+        if (uname) {
+            navigate(`/u/${uname}`)
+        } else if (onViewProfile && userId) {
             onViewProfile(userId)
         }
     }
 
-    const handleDeletePost = async () => {
+    const handlePostClick = () => {
+        navigate(`/post/${post.id}`)
+    }
+
+    const handleDeletePost = async (e) => {
+        e.stopPropagation()
         try {
             const { error } = await supabase
                 .from('posts')
@@ -306,8 +292,11 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         }
     }
 
+    const postUrl = `/post/${post.id}`
+    const profileUrl = `/u/${username}`
+
     return (
-        <article className="post">
+        <article className="post" onClick={handlePostClick} style={{ cursor: 'pointer' }}>
             <div className="post-avatar" onClick={handleProfileClick} style={{ cursor: 'pointer' }}>
                 <img src={avatarUrl} alt="User" loading="lazy" />
             </div>
@@ -317,20 +306,29 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                     {isVerified && <i className="ri-verified-badge-fill verified-badge"></i>}
                     <span className="username" onClick={handleProfileClick} style={{ cursor: 'pointer' }}>@{username}</span>
                     <span className="time">· {post.created_at ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true }) : 'Just now'}</span>
+                    {/* Post route URL link */}
+                    <a
+                        href={postUrl}
+                        onClick={(e) => { e.stopPropagation(); navigate(postUrl) }}
+                        style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '12px', opacity: 0.6 }}
+                        title={`View post #${post.id}`}
+                    >
+                        <i className="ri-link" style={{ fontSize: '12px' }}></i>
+                    </a>
                 </div>
                 <div className="post-text">
                     {cleanContent}
                 </div>
                 {post.image_url && (
-                    <div className="post-image" onClick={() => setShowImageZoom(true)} style={{ cursor: 'zoom-in' }}>
+                    <div className="post-image" onClick={(e) => { e.stopPropagation(); setShowImageZoom(true) }} style={{ cursor: 'zoom-in' }}>
                         <img src={post.image_url} alt="Post" onError={(e) => e.target.style.display = 'none'} />
                     </div>
                 )}
                 {showImageZoom && post.image_url && (
-                    <ImageZoomModal imageUrl={post.image_url} onClose={() => setShowImageZoom(false)} />
+                    <ImageZoomModal imageUrl={post.image_url} onClose={(e) => { setShowImageZoom(false) }} />
                 )}
                 {post.video_url && (
-                    <div className="post-video" style={{ marginTop: '12px' }}>
+                    <div className="post-video" style={{ marginTop: '12px' }} onClick={(e) => e.stopPropagation()}>
                         <VideoPlayer
                             src={post.video_url}
                             onError={(e) => e.target.style.display = 'none'}
@@ -344,7 +342,7 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                         <span>{postLocation}</span>
                     </div>
                 )}
-                <div className="post-actions">
+                <div className="post-actions" onClick={(e) => e.stopPropagation()}>
                     <div className="action-item blue" onClick={handleCommentToggle} style={{ cursor: 'pointer' }}>
                         <i className="ri-chat-1-line"></i> {commentsCount}
                     </div>
@@ -355,11 +353,11 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                     >
                         <i className={isLiked ? 'ri-heart-3-fill' : 'ri-heart-3-line'}></i> {likesCount}
                     </div>
-                    <div className="action-item green" onClick={() => setShowShareModal(true)} style={{ cursor: 'pointer' }}>
+                    <div className="action-item green" onClick={(e) => { e.stopPropagation(); setShowShareModal(true) }} style={{ cursor: 'pointer' }}>
                         <i className="ri-share-line"></i>
                     </div>
                     {isOwnPost && (
-                        <div className="action-item red" onClick={() => setShowDeleteConfirm(true)} style={{ cursor: 'pointer', color: '#ff4444' }}>
+                        <div className="action-item red" onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true) }} style={{ cursor: 'pointer', color: '#ff4444' }}>
                             <i className="ri-delete-bin-line"></i>
                         </div>
                     )}
@@ -373,7 +371,6 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                     />
                 )}
 
-                {/* Content Warning Modal */}
                 {showContentWarning && (
                     <ContentWarningModal 
                         message={warningMessage}
@@ -382,7 +379,7 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 )}
 
                 {showComments && (
-                    <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
                         {session && (
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                                 <input
@@ -439,29 +436,22 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                                         border: comment.isVerified ? '2px solid var(--twitter-blue)' : 'none'
                                     }}
                                     alt="Commenter"
-                                    onClick={() => handleCommentProfileClick(comment.user_id)}
+                                    onClick={(e) => handleCommentProfileClick(e, comment.user_id, comment.profiles?.username)}
                                 />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
                                         <span
                                             style={{ fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}
-                                            onClick={() => handleCommentProfileClick(comment.user_id)}
+                                            onClick={(e) => handleCommentProfileClick(e, comment.user_id, comment.profiles?.username)}
                                         >
                                             {comment.profiles?.full_name || 'User'}
                                         </span>
                                         {comment.isVerified && (
-                                            <i 
-                                                className="ri-verified-badge-fill" 
-                                                style={{ 
-                                                    color: 'var(--twitter-blue)', 
-                                                    fontSize: '14px',
-                                                    marginLeft: '2px'
-                                                }}
-                                            ></i>
+                                            <i className="ri-verified-badge-fill" style={{ color: 'var(--twitter-blue)', fontSize: '14px', marginLeft: '2px' }}></i>
                                         )}
                                         <span
                                             style={{ color: 'var(--text-muted)', fontSize: '14px', cursor: 'pointer' }}
-                                            onClick={() => handleCommentProfileClick(comment.user_id)}
+                                            onClick={(e) => handleCommentProfileClick(e, comment.user_id, comment.profiles?.username)}
                                         >
                                             @{comment.profiles?.username || 'user'}
                                         </span>
@@ -483,7 +473,7 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 )}
 
                 {showDeleteConfirm && (
-                    <div className="delete-modal-overlay">
+                    <div className="delete-modal-overlay" onClick={(e) => e.stopPropagation()}>
                         <div className="delete-modal-content">
                             <div className="delete-icon-container">
                                 <i className="ri-delete-bin-5-fill delete-icon-large"></i>
@@ -495,18 +485,8 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                                 This action cannot be undone.
                             </p>
                             <div className="delete-modal-actions">
-                                <button
-                                    onClick={handleDeletePost}
-                                    className="delete-btn-confirm"
-                                >
-                                    Delete
-                                </button>
-                                <button
-                                    onClick={() => setShowDeleteConfirm(false)}
-                                    className="delete-btn-cancel"
-                                >
-                                    Cancel
-                                </button>
+                                <button onClick={handleDeletePost} className="delete-btn-confirm">Delete</button>
+                                <button onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false) }} className="delete-btn-cancel">Cancel</button>
                             </div>
                         </div>
                     </div>
