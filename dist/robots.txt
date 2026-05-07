@@ -1,0 +1,21 @@
+# robots.txt - VogueX Social Media Platform
+# This file tells search engine crawlers which pages to index
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://voguex.vercel.app/sitemap.xml
+
+# Allow all major search engines full access
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+# Crawl delay (optional - prevents overwhelming server)
+Crawl-delay: 1

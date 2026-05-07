@@ -1,0 +1,21 @@
+<svg viewBox="0 0 270 36" x="0" y="0" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="pattern0_1319_26188" patternContentUnits="objectBoundingBox" width="0.0888889" height="0.666667" xmlns="http://www.w3.org/2000/svg">
+<use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#image0_1319_26188" transform="scale(0.00740741 0.0555556)"/>
+</pattern><image id="image0_1319_26188" data-name="image.png" width="12" height="12" preserveAspectRatio="none" xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAJElEQVQoFWN4+PDhf2z4Pw7AgE0xSAwXGBYacHkOV2AwjEQNAPMfJI8gSnAzAAAAAElFTkSuQmCC" xmlns="http://www.w3.org/2000/svg"/><filter id="filter2_d_1319_26188" x="233" y="-1" width="38" height="38" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB" xmlns="http://www.w3.org/2000/svg">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="1.5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1319_26188"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1319_26188" result="shape"/>
+</filter><linearGradient id="paint0_linear_1319_26188" x1="0" y1="33.388000000000034" x2="230.815" y2="33.388000000000034" gradientUnits="userSpaceOnUse" xmlns="http://www.w3.org/2000/svg">
+<stop stop-color="#3A87FD" stop-opacity="0.01"/>
+<stop offset="1" stop-color="#3A87FD"/>
+</linearGradient></defs><g id="Opacity Slider" xmlns="http://www.w3.org/2000/svg">
+<rect id="Tiled Background" x="0" y="0" width="270" height="36" rx="18" fill="url(#pattern0_1319_26188)"/>
+<rect id="Opacity Slider_2" x="0" y="0" width="270" height="36" rx="18" fill="url(#paint0_linear_1319_26188)"/>
+<g id="Opacity Selector" filter="url(#filter2_d_1319_26188)">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M252,34c8.837,0 16,-7.163 16,-16c0,-8.837 -7.163,-16 -16,-16c-8.837,0 -16,7.163 -16,16c0,8.837 7.163,16 16,16z" fill="#3A87FD"/>
+<path d="M252,3.5c8.008,0 14.5,6.492 14.5,14.5c0,8.008 -6.492,14.5 -14.5,14.5c-8.008,0 -14.5,-6.492 -14.5,-14.5c0,-8.008 6.492,-14.5 14.5,-14.5z" stroke="white" stroke-width="3"/>
+</g>
+</g></svg>
