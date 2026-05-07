@@ -38,11 +38,12 @@ export default function Messages({ session, onBack, selectedUser = null, onViewP
             fetchConversations()
             fetchUnreadCounts()
 
-            // Auto-refresh conversations every 3 seconds
+            // Auto-refresh conversations every 30 seconds as a fallback
+            // (realtime subscriptions handle immediate updates)
             const interval = setInterval(() => {
                 fetchConversations()
                 fetchUnreadCounts()
-            }, 3000)
+            }, 30000)
 
             return () => clearInterval(interval)
         }
@@ -54,10 +55,11 @@ export default function Messages({ session, onBack, selectedUser = null, onViewP
             checkVerified(selectedChat.username)
             fetchUserPresence(selectedChat.id)
 
-            // Auto-refresh messages every 3 seconds
+            // Auto-refresh messages every 30 seconds as a fallback
+            // (realtime subscription handles immediate updates)
             const refreshInterval = setInterval(() => {
                 fetchMessages()
-            }, 3000)
+            }, 30000)
 
             // Messages realtime subscription
             const messagesChannel = supabase
@@ -411,6 +413,7 @@ export default function Messages({ session, onBack, selectedUser = null, onViewP
             setNewMessage(newMessage) // Restore original message on error
         } finally {
             setLoading(false)
+            setUploadingFile(false) // Always reset upload state
         }
     }
 
@@ -705,9 +708,10 @@ export default function Messages({ session, onBack, selectedUser = null, onViewP
                                                     src={msg.file_url} 
                                                     alt={msg.file_name || 'Attachment'}
                                                     style={{
-                                                        width: '74px',
-                                                        height: '74px',
-                                                        borderRadius: '8px',
+                                                        width: '100%',
+                                                        maxWidth: '220px',
+                                                        height: 'auto',
+                                                        borderRadius: '10px',
                                                         objectFit: 'cover',
                                                         display: 'block'
                                                     }}
@@ -904,8 +908,8 @@ export default function Messages({ session, onBack, selectedUser = null, onViewP
                                     setShowEmojiPicker(false)
                                 }}
                                 theme="dark"
-                                width={300}
-                                height={400}
+                                width={Math.min(300, window.innerWidth - 32)}
+                                height={350}
                             />
                         </div>
                     )}

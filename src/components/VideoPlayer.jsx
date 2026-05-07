@@ -13,13 +13,24 @@ export default function VideoPlayer({ src, onError, id }) {
   const [showControls, setShowControls] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [videoAspectRatio, setVideoAspectRatio] = useState(null)
   const controlsTimeoutRef = useRef(null)
+
+  // Track whether user manually paused so IntersectionObserver won't auto-resume
+  const userPausedRef = useRef(false)
+  // Prevent double-fire: onTouchEnd → synthetic onClick on mobile
+  const touchGuardRef = useRef(false)
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
 
-    const handleLoadedMetadata = () => setDuration(video.duration)
+    const handleLoadedMetadata = () => {
+      setDuration(video.duration)
+      if (video.videoWidth && video.videoHeight) {
+        setVideoAspectRatio(`${video.videoWidth} / ${video.videoHeight}`)
+      }
+    }
     const handleTimeUpdate = () => !isDragging && setCurrentTime(video.currentTime)
     const handleEnded = () => setIsPlaying(false)
 
@@ -43,36 +54,64 @@ export default function VideoPlayer({ src, onError, id }) {
     }
   }, [isDragging, id, isPlaying])
 
+  // IntersectionObserver: auto-play/pause based on scroll, but respect user pause
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting && isPlaying) {
+        if (entry.intersectionRatio >= 0.6 && !isPlaying && !userPausedRef.current) {
+          videoRef.current?.play().catch(() => {})
+          setIsPlaying(true)
+          window.dispatchEvent(new CustomEvent('video-played', { detail: { id } }))
+        } else if (entry.intersectionRatio < 0.2 && isPlaying) {
           videoRef.current?.pause()
           setIsPlaying(false)
+          // Reset user-paused when scrolled out so it can auto-play again when scrolled back
+          userPausedRef.current = false
         }
       },
-      { threshold: 0.5 }
+      { threshold: [0.2, 0.6] }
     )
 
     if (containerRef.current) observer.observe(containerRef.current)
     return () => containerRef.current && observer.unobserve(containerRef.current)
-  }, [isPlaying])
+  }, [isPlaying, id])
 
-  const togglePlay = () => {
+  // ── Core play/pause ─────────────────────────────────────────────────────────
+  const doTogglePlay = () => {
     const video = videoRef.current
     if (!video) return
 
     if (isPlaying) {
       video.pause()
+      userPausedRef.current = true
+      setIsPlaying(false)
     } else {
-      video.play()
+      video.play().catch(() => {})
+      userPausedRef.current = false
       window.dispatchEvent(new CustomEvent('video-played', { detail: { id } }))
+      setIsPlaying(true)
     }
-    setIsPlaying(!isPlaying)
     showControlsTemporarily()
   }
 
-  const toggleMute = () => {
+  // Called by touch events — sets guard so the subsequent synthetic click is ignored
+  const handlePlayTouchEnd = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    touchGuardRef.current = true
+    doTogglePlay()
+    setTimeout(() => { touchGuardRef.current = false }, 500)
+  }
+
+  // Called by mouse click events — skips if touch just fired
+  const handlePlayClick = (e) => {
+    e.stopPropagation()
+    if (touchGuardRef.current) return
+    doTogglePlay()
+  }
+
+  const toggleMute = (e) => {
+    if (e) e.stopPropagation()
     const video = videoRef.current
     if (!video) return
     video.muted = !isMuted
@@ -80,7 +119,8 @@ export default function VideoPlayer({ src, onError, id }) {
     showControlsTemporarily()
   }
 
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = async (e) => {
+    if (e) e.stopPropagation()
     const container = containerRef.current
     if (!container) return
 
@@ -94,8 +134,8 @@ export default function VideoPlayer({ src, onError, id }) {
         else if (document.webkitExitFullscreen) await document.webkitExitFullscreen()
         else if (document.mozCancelFullScreen) await document.mozCancelFullScreen()
       }
-    } catch (error) {
-      console.error('Fullscreen error:', error)
+    } catch (err) {
+      console.error('Fullscreen error:', err)
     }
   }
 
@@ -113,9 +153,9 @@ export default function VideoPlayer({ src, onError, id }) {
     const video = videoRef.current
     const progressBar = progressBarRef.current
     if (!video || !progressBar) return
-
     const rect = progressBar.getBoundingClientRect()
-    const pos = (e.clientX - rect.left) / rect.width
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     video.currentTime = pos * duration
     setCurrentTime(video.currentTime)
   }
@@ -125,7 +165,6 @@ export default function VideoPlayer({ src, onError, id }) {
     const video = videoRef.current
     const progressBar = progressBarRef.current
     if (!video || !progressBar) return
-
     const rect = progressBar.getBoundingClientRect()
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     const newTime = pos * duration
@@ -139,7 +178,6 @@ export default function VideoPlayer({ src, onError, id }) {
     const video = videoRef.current
     const progressBar = progressBarRef.current
     if (!video || !progressBar) return
-
     const rect = progressBar.getBoundingClientRect()
     const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
     video.currentTime = pos * duration
@@ -148,20 +186,18 @@ export default function VideoPlayer({ src, onError, id }) {
 
   useEffect(() => {
     if (isDragging) {
-      const handleMouseMove = (e) => handleProgressDrag(e)
-      const handleMouseUp = () => setIsDragging(false)
-      const handleTouchEnd = () => setIsDragging(false)
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.addEventListener('touchmove', handleTouchMove)
-      document.addEventListener('touchend', handleTouchEnd)
-
+      const onMouseMove = (e) => handleProgressDrag(e)
+      const onMouseUp = () => setIsDragging(false)
+      const onTouchEnd = () => setIsDragging(false)
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
+      document.addEventListener('touchmove', handleTouchMove, { passive: false })
+      document.addEventListener('touchend', onTouchEnd)
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
         document.removeEventListener('touchmove', handleTouchMove)
-        document.removeEventListener('touchend', handleTouchEnd)
+        document.removeEventListener('touchend', onTouchEnd)
       }
     }
   }, [isDragging, duration])
@@ -169,9 +205,7 @@ export default function VideoPlayer({ src, onError, id }) {
   const showControlsTemporarily = () => {
     setShowControls(true)
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
-    if (isPlaying) {
-      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
-    }
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
   }
 
   useEffect(() => {
@@ -182,7 +216,9 @@ export default function VideoPlayer({ src, onError, id }) {
     return () => controlsTimeoutRef.current && clearTimeout(controlsTimeoutRef.current)
   }, [isPlaying, showControls])
 
-  const handleVideoClick = () => {
+  // Container click (shows/hides controls bar, does NOT toggle play)
+  const handleContainerClick = (e) => {
+    e.stopPropagation()
     if (showControls && isPlaying) setShowControls(false)
     else showControlsTemporarily()
   }
@@ -197,7 +233,12 @@ export default function VideoPlayer({ src, onError, id }) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div ref={containerRef} className={`vp-container ${isFullscreen ? 'vp-fullscreen' : ''}`} onClick={handleVideoClick}>
+    <div
+      ref={containerRef}
+      className={`vp-container ${isFullscreen ? 'vp-fullscreen' : ''}`}
+      onClick={handleContainerClick}
+      style={videoAspectRatio && !isFullscreen ? { aspectRatio: videoAspectRatio } : undefined}
+    >
       <video
         ref={videoRef}
         src={src}
@@ -207,19 +248,25 @@ export default function VideoPlayer({ src, onError, id }) {
         onError={onError}
       />
 
+      {/* Centre big play/pause button */}
       {(!isPlaying || showControls) && (
-        <button className="vp-play-center" onClick={(e) => { e.stopPropagation(); togglePlay() }}>
+        <button
+          className="vp-play-center"
+          onTouchEnd={handlePlayTouchEnd}
+          onClick={handlePlayClick}
+        >
           {isPlaying ? <Pause size={32} fill="#000" /> : <Play size={32} fill="#000" />}
         </button>
       )}
 
+      {/* Bottom control bar */}
       <div className={`vp-overlay ${showControls ? 'vp-show' : ''}`}>
         <div className="vp-bottom">
           <div
             ref={progressBarRef}
             className="vp-progress"
-            onMouseDown={(e) => { setIsDragging(true); handleProgressClick(e) }}
-            onTouchStart={(e) => { setIsDragging(true); handleProgressClick(e) }}
+            onMouseDown={(e) => { e.stopPropagation(); setIsDragging(true); handleProgressClick(e) }}
+            onTouchStart={(e) => { e.stopPropagation(); setIsDragging(true); handleProgressClick(e) }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="vp-progress-bar">
@@ -230,11 +277,15 @@ export default function VideoPlayer({ src, onError, id }) {
           </div>
 
           <div className="vp-controls">
-            <button className="vp-btn" onClick={(e) => { e.stopPropagation(); togglePlay() }}>
+            <button
+              className="vp-btn"
+              onTouchEnd={handlePlayTouchEnd}
+              onClick={handlePlayClick}
+            >
               {isPlaying ? <Pause size={18} /> : <Play size={18} fill="white" />}
             </button>
 
-            <button className="vp-btn" onClick={(e) => { e.stopPropagation(); toggleMute() }}>
+            <button className="vp-btn" onClick={(e) => toggleMute(e)}>
               {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
 
@@ -242,7 +293,7 @@ export default function VideoPlayer({ src, onError, id }) {
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
 
-            <button className="vp-btn vp-btn-fullscreen" onClick={(e) => { e.stopPropagation(); toggleFullscreen() }}>
+            <button className="vp-btn vp-btn-fullscreen" onClick={(e) => toggleFullscreen(e)}>
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
             </button>
           </div>

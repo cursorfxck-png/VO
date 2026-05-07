@@ -1,0 +1,222 @@
+/* ─── AudioPlayer — Figma-inspired pill design ────────────────────────────── */
+
+.ap-root {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #2a2a2a;
+  border-radius: 56px;
+  padding: 10px 14px 10px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 12px;
+  /* subtle glow */
+  box-shadow: 0 0 0 1px rgba(205, 7, 255, 0.18), 0 4px 24px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Faint purple shimmer background */
+.ap-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 10% 50%, rgba(205, 7, 255, 0.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ── Play button ──────────────────────────────────────────────────────────── */
+.ap-play-btn {
+  flex-shrink: 0;
+  width: 52px;
+  height: 44px;
+  border-radius: 100px;
+  background: linear-gradient(135deg, #cd07ff 0%, #8b00b5 100%);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 14px rgba(205, 7, 255, 0.5);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ap-play-btn:active {
+  transform: scale(0.94);
+  box-shadow: 0 0 8px rgba(205, 7, 255, 0.3);
+}
+
+/* ── Middle section ───────────────────────────────────────────────────────── */
+.ap-middle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ap-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e5e5e5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.ap-wave-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Animated EQ bars ─────────────────────────────────────────────────────── */
+.ap-eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.ap-eq__bar {
+  width: 4px;
+  height: 6px;
+  background: #6e6e6e;
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+
+.ap-eq--playing .ap-eq__bar {
+  background: #cd07ff;
+  animation: eq-bounce 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes eq-bounce {
+  0%   { height: 4px; }
+  100% { height: 20px; }
+}
+
+.ap-eq--playing .ap-eq__bar:nth-child(1) { animation-duration: 0.55s; }
+.ap-eq--playing .ap-eq__bar:nth-child(2) { animation-duration: 0.70s; }
+.ap-eq--playing .ap-eq__bar:nth-child(3) { animation-duration: 0.50s; }
+.ap-eq--playing .ap-eq__bar:nth-child(4) { animation-duration: 0.65s; }
+.ap-eq--playing .ap-eq__bar:nth-child(5) { animation-duration: 0.80s; }
+
+/* ── Progress bar ─────────────────────────────────────────────────────────── */
+.ap-progress {
+  flex: 1;
+  padding: 8px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ap-progress-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  position: relative;
+}
+
+.ap-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #cd07ff, #ff6ef7);
+  border-radius: 2px;
+  position: relative;
+  transition: width 0.1s linear;
+}
+
+.ap-progress-thumb {
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(205, 7, 255, 0.6);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ap-progress:hover .ap-progress-thumb {
+  opacity: 1;
+}
+
+/* Always show thumb on mobile */
+@media (max-width: 768px) {
+  .ap-progress-thumb {
+    opacity: 1;
+    width: 12px;
+    height: 12px;
+    right: -6px;
+  }
+}
+
+/* ── Time display ─────────────────────────────────────────────────────────── */
+.ap-time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── Right panel ──────────────────────────────────────────────────────────── */
+.ap-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.ap-mute-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ap-mute-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── MP3 badge — yellow like the Figma design ─────────────────────────────── */
+.ap-badge {
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffc300;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* ── Responsive tweaks ────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .ap-root {
+    gap: 8px;
+    padding: 8px 10px 8px 8px;
+  }
+
+  .ap-play-btn {
+    width: 44px;
+    height: 38px;
+  }
+
+  .ap-title {
+    font-size: 11px;
+  }
+}

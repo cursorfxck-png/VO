@@ -1,20 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { ImageIcon, VideoIcon, LocationIcon } from './GradientIcons'
 import { validateContent } from '../utils/contentModeration'
 import ContentWarningModal from './ContentWarningModal'
+import { compressImage, parseMediaUrls } from '../utils/mediaUtils'
+
+const MAX_IMAGES = 10
+const MAX_VIDEOS = 2
 
 export default function ComposeBox({ session }) {
     const [content, setContent] = useState('')
     const [loading, setLoading] = useState(false)
-    const [imageUrl, setImageUrl] = useState('')
-    const [videoUrl, setVideoUrl] = useState('')
     const [location, setLocation] = useState(null)
     const [userAvatar, setUserAvatar] = useState('/download.png')
     const [uploading, setUploading] = useState(false)
-    const [videoLoading, setVideoLoading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState('') // status text
     const [showContentWarning, setShowContentWarning] = useState(false)
     const [warningMessage, setWarningMessage] = useState('')
+    // mediaItems: [{id, type:'image'|'video', file, preview, url}]
+    const [mediaItems, setMediaItems] = useState([])
+    const imageInputRef = useRef(null)
+    const videoInputRef = useRef(null)
+
+    const imageCount = mediaItems.filter(m => m.type === 'image').length
+    const videoCount = mediaItems.filter(m => m.type === 'video').length
 
     useEffect(() => {
         getUserProfile()
@@ -27,294 +36,345 @@ export default function ComposeBox({ session }) {
                 .select('avatar_url')
                 .eq('id', session.user.id)
                 .single()
-
-            if (data?.avatar_url) {
-                setUserAvatar(data.avatar_url)
-            }
+            if (data?.avatar_url) setUserAvatar(data.avatar_url)
         } catch (error) {
             console.error('Error loading avatar:', error)
         }
     }
 
-    const sanitizeContent = (text) => {
-        // Sanitize HTML and limit length
-        return text
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .trim()
-            .substring(0, 5000) // Limit post length
+    const sanitizeContent = (text) =>
+        text.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim().substring(0, 5000)
+
+    // ── Upload helpers ─────────────────────────────────────────────────────────
+    const uploadImageFile = async (file, index, total) => {
+        setUploadProgress(`Compressing image ${index + 1}/${total}…`)
+        const compressed = await compressImage(file, { maxSizeMB: 0.8, quality: 0.72 })
+
+        const fileName = `${session.user.id}-${Date.now()}-${index}.jpg`
+        const filePath = `post-images/${fileName}`
+        setUploadProgress(`Uploading image ${index + 1}/${total}…`)
+
+        const { error } = await supabase.storage.from('images').upload(filePath, compressed)
+        if (error) throw error
+
+        const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath)
+        return publicUrl
     }
 
-    const validateImageUrl = (url) => {
-        if (!url) return true
-        try {
-            const urlObj = new URL(url)
-            return urlObj.protocol === 'http:' || urlObj.protocol === 'https:'
-        } catch {
-            return false
+    const uploadVideoFile = async (file, index, total) => {
+        setUploadProgress(`Uploading video ${index + 1}/${total}…`)
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${index}.${fileExt}`
+        const filePath = `${session.user.id}/${fileName}`
+
+        const { error } = await supabase.storage.from('videos').upload(filePath, file)
+        if (error) throw error
+
+        const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(filePath)
+        return publicUrl
+    }
+
+    // ── File select handlers ───────────────────────────────────────────────────
+    const handleImageSelect = (e) => {
+        const files = Array.from(e.target.files || [])
+        if (!files.length) return
+        e.target.value = '' // reset so same file can be picked again
+
+        const remaining = MAX_IMAGES - imageCount
+        if (remaining <= 0) { alert(`Maximum ${MAX_IMAGES} images allowed`); return }
+
+        const toAdd = files.slice(0, remaining)
+        const newItems = toAdd.map(file => ({
+            id: `img-${Date.now()}-${Math.random()}`,
+            type: 'image',
+            file,
+            preview: URL.createObjectURL(file),
+            url: null,
+        }))
+        setMediaItems(prev => [...prev, ...newItems])
+    }
+
+    const handleVideoSelect = (e) => {
+        const files = Array.from(e.target.files || [])
+        if (!files.length) return
+        e.target.value = ''
+
+        const remaining = MAX_VIDEOS - videoCount
+        if (remaining <= 0) { alert(`Maximum ${MAX_VIDEOS} videos allowed`); return }
+
+        const file = files[0] // one at a time
+        const isAudio = file.type.startsWith('audio/')
+        const isVideo = file.type.startsWith('video/')
+        if (!isVideo && !isAudio) { alert('Select a video or audio (MP3) file'); return }
+        if (file.size > 200 * 1024 * 1024) { alert('File must be under 200 MB'); return }
+
+        const newItem = {
+            id: `vid-${Date.now()}-${Math.random()}`,
+            type: isAudio ? 'audio' : 'video',
+            file,
+            preview: URL.createObjectURL(file),
+            url: null,
         }
+        setMediaItems(prev => [...prev, newItem])
     }
 
-    const handlePost = async () => {
-        if (!content.trim() && !imageUrl && !videoUrl) return
+    const removeMedia = (id) => {
+        setMediaItems(prev => {
+            const item = prev.find(m => m.id === id)
+            if (item?.preview) URL.revokeObjectURL(item.preview)
+            return prev.filter(m => m.id !== id)
+        })
+    }
 
-        // Validate content for abusive words
+    // ── Post ──────────────────────────────────────────────────────────────────
+    const handlePost = async () => {
+        if (!content.trim() && mediaItems.length === 0) return
+
         const contentValidation = validateContent(content)
         if (!contentValidation.isValid) {
             setWarningMessage(contentValidation.message)
             setShowContentWarning(true)
             return
         }
-
-        // Validate content length
-        if (content.length > 5000) {
-            alert('Post is too long. Maximum 5000 characters.')
-            return
-        }
-
-        // Validate image URL if provided
-        if (imageUrl && !validateImageUrl(imageUrl)) {
-            alert('Invalid image URL')
-            return
-        }
+        if (content.length > 5000) { alert('Post is too long (max 5000 chars)'); return }
 
         setLoading(true)
-
-        let finalContent = sanitizeContent(content)
-        if (location) {
-            finalContent += `\n\n📍 ${location}`
-        }
-
+        setUploading(true)
 
         try {
-            // Validate session
-            if (!session?.user?.id) {
-                throw new Error('Not authenticated')
-            }
+            if (!session?.user?.id) throw new Error('Not authenticated')
 
-            // First, ensure the user has a profile
             const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('id, username, full_name')
-                .eq('id', session.user.id)
-                .single()
-
-            if (profileError || !profileData) {
+                .from('profiles').select('id, username, full_name').eq('id', session.user.id).single()
+            if (profileError || !profileData?.username || !profileData?.full_name) {
                 alert('Please complete your profile first!')
                 return
             }
 
-            if (!profileData.username || !profileData.full_name) {
-                alert('Please set your username and name in your profile!')
-                return
+            // Upload all media
+            const images = mediaItems.filter(m => m.type === 'image')
+            // Both video and audio go to the videos bucket; audio URLs get stored in video_url too
+            const videos = mediaItems.filter(m => m.type === 'video' || m.type === 'audio')
+
+            const imageUrls = await Promise.all(
+                images.map((item, i) => uploadImageFile(item.file, i, images.length))
+            )
+            const videoUrls = []
+            for (let i = 0; i < videos.length; i++) {
+                const url = await uploadVideoFile(videos[i].file, i, videos.length)
+                videoUrls.push(url)
             }
 
-            // Now create the post
-            const { data, error } = await supabase
-                .from('posts')
-                .insert([
-                    {
-                        content: finalContent,
-                        user_id: session.user.id,
-                        image_url: imageUrl || null,
-                        video_url: videoUrl || null,
-                        created_at: new Date()
-                    }
-                ])
-                .select()
+            setUploadProgress('Creating post…')
+            let finalContent = sanitizeContent(content)
+            if (location) finalContent += `\n\n📍 ${location}`
+
+            const { data, error } = await supabase.from('posts').insert([{
+                content: finalContent,
+                user_id: session.user.id,
+                image_url: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null,
+                video_url: videoUrls.length > 0 ? JSON.stringify(videoUrls) : null,
+                created_at: new Date(),
+            }]).select()
 
             if (error) throw error
 
-            // Clear form immediately for better UX
+            // Clean up previews
+            mediaItems.forEach(m => { if (m.preview) URL.revokeObjectURL(m.preview) })
             setContent('')
-            setImageUrl('')
-            setVideoUrl('')
+            setMediaItems([])
             setLocation(null)
-
-
-            // Force a broadcast to trigger real-time listeners
-            if (data && data[0]) {
-                console.log('✅ Post created successfully:', data[0].id)
-            }
+            if (data?.[0]) console.log('✅ Post created:', data[0].id)
         } catch (error) {
             console.error('Error posting:', error.message)
-            alert('Failed to create post. Please try again.')
+            alert('Failed to create post: ' + error.message)
         } finally {
             setLoading(false)
+            setUploading(false)
+            setUploadProgress('')
         }
     }
 
     const getLocation = () => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((position) => {
-                setLocation(`Lat: ${position.coords.latitude.toFixed(6)}, Long: ${position.coords.longitude.toFixed(6)}`)
-            }, (error) => {
-                alert("Could not get location: " + error.message)
-            })
-        } else {
-            alert("Geolocation is not supported by this browser.")
-        }
+        if (!navigator.geolocation) { alert('Geolocation not supported'); return }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => setLocation(`Lat: ${pos.coords.latitude.toFixed(6)}, Long: ${pos.coords.longitude.toFixed(6)}`),
+            (err) => alert('Could not get location: ' + err.message)
+        )
     }
 
-    const handleImageUpload = async (e) => {
-        const file = e.target.files[0]
-        if (!file) return
+    // ── Media preview grid ────────────────────────────────────────────────────
+    const renderMediaPreviews = () => {
+        if (mediaItems.length === 0) return null
+        const images = mediaItems.filter(m => m.type === 'image')
+        const videos = mediaItems.filter(m => m.type === 'video')
 
-        if (!file.type.startsWith('image/')) {
-            alert('Please select an image file')
-            return
-        }
+        return (
+            <div style={{ marginTop: '12px' }}>
+                {/* Image grid */}
+                {images.length > 0 && (
+                    <div className={`compose-media-grid compose-media-grid-${Math.min(images.length, 3)}`}>
+                        {images.map((item) => (
+                            <div key={item.id} className="compose-media-item">
+                                <img src={item.preview} alt="preview" />
+                                <button className="compose-media-remove" onClick={() => removeMedia(item.id)}>
+                                    <i className="ri-close-line"></i>
+                                </button>
+                            </div>
+                        ))}
+                        {imageCount < MAX_IMAGES && (
+                            <button
+                                className="compose-media-add"
+                                onClick={() => imageInputRef.current?.click()}
+                                title="Add more images"
+                            >
+                                <i className="ri-add-line"></i>
+                                <span>{imageCount}/{MAX_IMAGES}</span>
+                            </button>
+                        )}
+                    </div>
+                )}
 
-        if (file.size > 5 * 1024 * 1024) {
-            alert('Image size should be less than 5MB')
-            return
-        }
-
-        setUploading(true)
-        try {
-            const fileExt = file.name.split('.').pop()
-            const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
-            const filePath = `post-images/${fileName}`
-
-            const { error: uploadError } = await supabase.storage
-                .from('images')
-                .upload(filePath, file)
-
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('images')
-                .getPublicUrl(filePath)
-
-            setImageUrl(publicUrl)
-        } catch (error) {
-            console.error('Error uploading image:', error)
-            alert('Failed to upload image. Make sure the "images" bucket exists in Supabase Storage.')
-        } finally {
-            setUploading(false)
-        }
-    }
-
-    const handleVideoUpload = async (e) => {
-        const file = e.target.files[0]
-        if (!file) return
-
-        if (!file.type.startsWith('video/')) {
-            alert('Please select a video file')
-            return
-        }
-
-        if (file.size > 50 * 1024 * 1024) {
-            alert('Video size should be less than 50MB')
-            return
-        }
-
-        setUploading(true)
-        try {
-            const fileExt = file.name.split('.').pop()
-            const fileName = `${Date.now()}.${fileExt}`
-            const filePath = `${session.user.id}/${fileName}`
-
-            const { error: uploadError } = await supabase.storage
-                .from('videos')
-                .upload(filePath, file)
-
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('videos')
-                .getPublicUrl(filePath)
-
-            setVideoUrl(publicUrl)
-        } catch (error) {
-            console.error('Error uploading video:', error)
-            alert('Failed to upload video. Make sure the "videos" bucket exists in Supabase Storage.')
-        } finally {
-            setUploading(false)
-        }
+                {/* Video / Audio previews */}
+                {videos.length > 0 && (
+                    <div style={{ marginTop: images.length > 0 ? '8px' : '0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {videos.map((item) => (
+                            <div key={item.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+                                {item.type === 'audio' ? (
+                                    /* Audio preview pill */
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
+                                        <div style={{
+                                            width: '40px', height: '36px', borderRadius: '50px',
+                                            background: 'linear-gradient(135deg,#cd07ff,#8b00b5)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                        }}>
+                                            <i className="ri-music-2-line" style={{ color: '#fff', fontSize: '16px' }}></i>
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#e5e5e5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {item.file.name.replace(/\.[^.]+$/, '')}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#ffc300', fontWeight: 700, marginTop: '2px' }}>MP3</div>
+                                        </div>
+                                        <audio src={item.preview} controls style={{ display: 'none' }} />
+                                    </div>
+                                ) : (
+                                    <video
+                                        src={item.preview}
+                                        controls
+                                        preload="metadata"
+                                        playsInline
+                                        style={{ width: '100%', maxHeight: '220px', display: 'block', borderRadius: '12px' }}
+                                    />
+                                )}
+                                <button
+                                    onClick={() => removeMedia(item.id)}
+                                    style={{
+                                        position: 'absolute', top: '8px', right: '8px',
+                                        background: 'rgba(0,0,0,0.75)', border: 'none',
+                                        borderRadius: '50%', width: '28px', height: '28px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer', color: 'white', zIndex: 5
+                                    }}
+                                >
+                                    <i className="ri-close-line" style={{ fontSize: '16px' }}></i>
+                                </button>
+                            </div>
+                        ))}
+                        {videoCount < MAX_VIDEOS && (
+                            <button
+                                style={{
+                                    padding: '8px 16px', background: 'rgba(255,255,255,0.06)',
+                                    border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '10px',
+                                    color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px'
+                                }}
+                                onClick={() => videoInputRef.current?.click()}
+                            >
+                                <i className="ri-add-line"></i> Add video / audio ({videoCount}/{MAX_VIDEOS})
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        )
     }
 
     return (
         <div className="compose-box">
-            <img src={userAvatar} className="compose-avatar" />
+            <img src={userAvatar} className="compose-avatar" alt="avatar" />
             <div style={{ flex: 1 }}>
-                <input type="text" className="compose-input" placeholder="What's trending now?!" value={content} onChange={(e) => setContent(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handlePost()} />
-                {imageUrl && (<div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px' }}><img src={imageUrl} style={{ borderRadius: '12px', maxHeight: '200px', width: 'auto' }} /><button onClick={() => setImageUrl('')} style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.7)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="ri-close-line" style={{ color: 'white' }}></i></button></div>)}
-                {videoUrl && (
-                    <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {videoLoading && (
-                            <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>
-                                <i className="ri-loader-4-line" style={{ fontSize: '20px', animation: 'spin 1s linear infinite' }}></i>
-                                <span>Loading video...</span>
-                            </div>
-                        )}
-                        <video
-                            src={videoUrl}
-                            controls
-                            preload="metadata"
-                            playsInline
-                            style={{
-                                borderRadius: '12px',
-                                maxHeight: '300px',
-                                width: '100%',
-                                display: videoLoading ? 'none' : 'block'
-                            }}
-                            onLoadStart={() => setVideoLoading(true)}
-                            onLoadedData={(e) => {
-                                setVideoLoading(false)
-                                e.target.style.opacity = '1'
-                            }}
-                            onError={(e) => {
-                                console.error('Video preview error')
-                                setVideoLoading(false)
-                                alert('Failed to load video preview')
-                                setVideoUrl('')
-                            }}
-                        />
-                        <button
-                            onClick={() => {
-                                setVideoUrl('')
-                                setVideoLoading(false)
-                            }}
-                            style={{
-                                position: 'absolute',
-                                top: '5px',
-                                right: '5px',
-                                background: 'rgba(0,0,0,0.7)',
-                                borderRadius: '50%',
-                                width: '24px',
-                                height: '24px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                border: 'none',
-                                cursor: 'pointer',
-                                zIndex: 10
-                            }}
-                        >
-                            <i className="ri-close-line" style={{ color: 'white' }}></i>
-                        </button>
+                <input
+                    type="text"
+                    className="compose-input"
+                    placeholder="What's trending now?!"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handlePost()}
+                />
+
+                {renderMediaPreviews()}
+
+                {location && (
+                    <div style={{ marginTop: '5px', marginBottom: '10px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px', background: 'rgba(217, 70, 239, 0.1)', padding: '5px 10px', borderRadius: '12px', width: 'fit-content' }}>
+                        <i className="ri-map-pin-fill"></i> {location}
+                        <i className="ri-close-circle-fill" onClick={() => setLocation(null)} style={{ cursor: 'pointer', marginLeft: '5px' }}></i>
                     </div>
                 )}
-                {location && (<div style={{ marginTop: '5px', marginBottom: '10px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px', background: 'rgba(217, 70, 239, 0.1)', padding: '5px 10px', borderRadius: '12px', width: 'fit-content' }}><i className="ri-map-pin-fill"></i> {location} <i className="ri-close-circle-fill" onClick={() => setLocation(null)} style={{ cursor: 'pointer', marginLeft: '5px' }}></i></div>)}
+
+                {uploading && uploadProgress && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <i className="ri-loader-4-line" style={{ animation: 'spin 1s linear infinite' }}></i>
+                        {uploadProgress}
+                    </div>
+                )}
 
                 <div className="compose-actions">
                     <div className="icon-set" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-                        <label style={{ cursor: videoUrl ? 'not-allowed' : 'pointer', opacity: videoUrl ? 0.5 : 1, display: 'inline-flex', alignItems: 'center' }}>
+                        {/* Image upload — disabled when max reached */}
+                        <label style={{ cursor: imageCount >= MAX_IMAGES ? 'not-allowed' : 'pointer', opacity: imageCount >= MAX_IMAGES ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
+                            title={`Add images (${imageCount}/${MAX_IMAGES})`}>
                             <ImageIcon size={24} />
-                            <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} disabled={uploading || videoUrl} />
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleImageSelect}
+                                style={{ display: 'none' }}
+                                disabled={uploading || imageCount >= MAX_IMAGES}
+                            />
                         </label>
-                        <label style={{ cursor: imageUrl ? 'not-allowed' : 'pointer', opacity: imageUrl ? 0.5 : 1, display: 'inline-flex', alignItems: 'center' }}>
+
+                        {/* Video / Audio upload — disabled when max reached */}
+                         <label style={{ cursor: videoCount >= MAX_VIDEOS ? 'not-allowed' : 'pointer', opacity: videoCount >= MAX_VIDEOS ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
+                            title={`Add video or MP3 audio (${videoCount}/${MAX_VIDEOS})`}>
                             <VideoIcon size={24} />
-                            <input type="file" accept="video/*" onChange={handleVideoUpload} style={{ display: 'none' }} disabled={uploading || imageUrl} />
+                            <input
+                                ref={videoInputRef}
+                                type="file"
+                                accept="video/*,audio/*,.mp3,.m4a,.ogg,.wav,.aac"
+                                onChange={handleVideoSelect}
+                                style={{ display: 'none' }}
+                                disabled={uploading || videoCount >= MAX_VIDEOS}
+                            />
                         </label>
 
                         <div style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} onClick={getLocation}>
                             <LocationIcon size={24} />
                         </div>
+
+                        {/* Media count badge */}
+                        {mediaItems.length > 0 && (
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.07)', padding: '3px 8px', borderRadius: '10px' }}>
+                                {imageCount > 0 && `${imageCount} img`}
+                                {imageCount > 0 && videoCount > 0 && ' · '}
+                                {videoCount > 0 && `${videoCount} vid`}
+                            </span>
+                        )}
                     </div>
+
                     <button className="glass-btn" onClick={handlePost} disabled={loading || uploading}>
-                        <span>{uploading ? 'Uploading...' : loading ? 'Posting...' : 'Post'}</span>
+                        <span>{uploading ? uploadProgress || 'Uploading…' : loading ? 'Posting…' : 'Post'}</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                         </svg>
@@ -322,9 +382,8 @@ export default function ComposeBox({ session }) {
                 </div>
             </div>
 
-            {/* Content Warning Modal */}
             {showContentWarning && (
-                <ContentWarningModal 
+                <ContentWarningModal
                     message={warningMessage}
                     onClose={() => setShowContentWarning(false)}
                 />

@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import ImageZoomModal from './ImageZoomModal'
 import ShareModal from './ShareModal'
 import VideoPlayer from './VideoPlayer'
+import AudioPlayer from './AudioPlayer'
 import { validateContent } from '../utils/contentModeration'
 import ContentWarningModal from './ContentWarningModal'
+import { parseMediaUrls } from '../utils/mediaUtils'
 
 export default function Post({ post, session, onViewProfile, onDelete }) {
     const navigate = useNavigate()
     const [showImageZoom, setShowImageZoom] = useState(false)
+    const [zoomIndex, setZoomIndex] = useState(0)
     const [likesCount, setLikesCount] = useState(0)
     const [commentsCount, setCommentsCount] = useState(0)
     const [isLiked, setIsLiked] = useState(false)
@@ -24,8 +27,26 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
     const [showContentWarning, setShowContentWarning] = useState(false)
     const [warningMessage, setWarningMessage] = useState('')
     const [userProfile, setUserProfile] = useState(null)
-    
+    // Media carousel state
+    const [mediaIndex, setMediaIndex] = useState(0)
+    const carouselRef = useRef(null)
+    const touchStartX = useRef(null)
+    const touchStartY = useRef(null)
+
     const isOwnPost = session?.user?.id === post.user_id
+
+    // Parse multi-media URLs (JSON arrays or plain strings)
+    const imageUrls = parseMediaUrls(post.image_url)
+    // video_url may contain both video and audio file URLs
+    const videoUrls = parseMediaUrls(post.video_url)
+    // Helper: detect audio by file extension in the URL
+    const isAudioUrl = (url) => /\.(mp3|m4a|ogg|wav|aac|flac|opus)($|\?)/i.test(url)
+    // Combined media array: images first, then video/audio
+    const allMedia = [
+        ...imageUrls.map(url => ({ type: 'image', url })),
+        ...videoUrls.map(url => ({ type: isAudioUrl(url) ? 'audio' : 'video', url })),
+    ]
+    const totalMedia = allMedia.length
 
     useEffect(() => {
         fetchUserProfile()
@@ -292,8 +313,182 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
         }
     }
 
+    // ── Carousel navigation ──────────────────────────────────────────────────
+    const goPrev = (e) => {
+        e.stopPropagation()
+        setMediaIndex(i => (i - 1 + totalMedia) % totalMedia)
+    }
+
+    const goNext = (e) => {
+        e.stopPropagation()
+        setMediaIndex(i => (i + 1) % totalMedia)
+    }
+
+    const goTo = (e, idx) => {
+        e.stopPropagation()
+        setMediaIndex(idx)
+    }
+
+    // Touch swipe handlers
+    const handleTouchStart = (e) => {
+        touchStartX.current = e.touches[0].clientX
+        touchStartY.current = e.touches[0].clientY
+    }
+
+    const handleTouchEnd = (e) => {
+        if (touchStartX.current === null) return
+        const dx = e.changedTouches[0].clientX - touchStartX.current
+        const dy = e.changedTouches[0].clientY - touchStartY.current
+        // Only swipe if horizontal movement is dominant and significant
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+            if (dx < 0) {
+                setMediaIndex(i => (i + 1) % totalMedia)
+            } else {
+                setMediaIndex(i => (i - 1 + totalMedia) % totalMedia)
+            }
+        }
+        touchStartX.current = null
+        touchStartY.current = null
+    }
+
     const postUrl = `/post/${post.id}`
     const profileUrl = `/u/${username}`
+
+    // ── Media carousel renderer ──────────────────────────────────────────────
+    const renderMediaCarousel = () => {
+        if (totalMedia === 0) return null
+
+        const current = allMedia[mediaIndex]
+
+        return (
+            <div
+                className="post-media-carousel"
+                onClick={(e) => e.stopPropagation()}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                ref={carouselRef}
+                style={{ position: 'relative', marginTop: '12px', borderRadius: '16px', overflow: 'hidden' }}
+            >
+                {/* Current media */}
+                {current.type === 'image' ? (
+                    <div
+                        style={{ cursor: 'zoom-in', lineHeight: 0 }}
+                        onClick={(e) => { e.stopPropagation(); setZoomIndex(mediaIndex); setShowImageZoom(true) }}
+                    >
+                        <img
+                            src={current.url}
+                            alt={`Media ${mediaIndex + 1}`}
+                            onError={(e) => e.target.style.display = 'none'}
+                            style={{
+                                width: '100%',
+                                maxHeight: '520px',
+                                objectFit: 'cover',
+                                display: 'block',
+                                borderRadius: '16px',
+                            }}
+                        />
+                    </div>
+                ) : current.type === 'audio' ? (
+                    <div onClick={(e) => e.stopPropagation()} style={{ padding: '0 4px' }}>
+                        <AudioPlayer
+                            src={current.url}
+                            title={current.url.split('/').pop()?.replace(/\.[^.]+$/, '')}
+                            onError={(e) => e.target.style.display = 'none'}
+                        />
+                    </div>
+                ) : (
+                    <div onClick={(e) => e.stopPropagation()}>
+                        <VideoPlayer
+                            src={current.url}
+                            onError={(e) => e.target.style.display = 'none'}
+                            id={`${post.id}-${mediaIndex}`}
+                        />
+                    </div>
+                )}
+
+                {/* Arrows — only when multiple media items */}
+                {totalMedia > 1 && (
+                    <>
+                        <button
+                            onClick={goPrev}
+                            aria-label="Previous"
+                            style={{
+                                position: 'absolute', left: '10px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(0,0,0,0.55)', border: 'none',
+                                borderRadius: '50%', width: '36px', height: '36px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#fff', cursor: 'pointer', zIndex: 5,
+                                backdropFilter: 'blur(6px)',
+                                fontSize: '18px', lineHeight: 1,
+                            }}
+                        >
+                            <i className="ri-arrow-left-s-line" />
+                        </button>
+                        <button
+                            onClick={goNext}
+                            aria-label="Next"
+                            style={{
+                                position: 'absolute', right: '10px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(0,0,0,0.55)', border: 'none',
+                                borderRadius: '50%', width: '36px', height: '36px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#fff', cursor: 'pointer', zIndex: 5,
+                                backdropFilter: 'blur(6px)',
+                                fontSize: '18px', lineHeight: 1,
+                            }}
+                        >
+                            <i className="ri-arrow-right-s-line" />
+                        </button>
+                    </>
+                )}
+
+                {/* Dots */}
+                {totalMedia > 1 && (
+                    <div
+                        style={{
+                            position: 'absolute', bottom: '10px', left: 0, right: 0,
+                            display: 'flex', justifyContent: 'center', gap: '6px', zIndex: 5,
+                        }}
+                    >
+                        {allMedia.map((item, idx) => (
+                            <button
+                                key={idx}
+                                onClick={(e) => goTo(e, idx)}
+                                aria-label={`Go to ${item.type} ${idx + 1}`}
+                                style={{
+                                    width: idx === mediaIndex ? '20px' : '8px',
+                                    height: '8px',
+                                    borderRadius: '4px',
+                                    background: idx === mediaIndex ? '#fff' : 'rgba(255,255,255,0.5)',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    transition: 'width 0.25s ease, background 0.2s ease',
+                                }}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {/* Counter badge */}
+                {totalMedia > 1 && (
+                    <div
+                        style={{
+                            position: 'absolute', top: '10px', right: '10px',
+                            background: 'rgba(0,0,0,0.6)', color: '#fff',
+                            fontSize: '12px', fontWeight: 600,
+                            padding: '3px 9px', borderRadius: '12px',
+                            backdropFilter: 'blur(6px)', zIndex: 5,
+                        }}
+                    >
+                        {mediaIndex + 1}/{totalMedia}
+                    </div>
+                )}
+            </div>
+        )
+    }
 
     return (
         <article className="post" onClick={handlePostClick} style={{ cursor: 'pointer' }}>
@@ -319,23 +514,19 @@ export default function Post({ post, session, onViewProfile, onDelete }) {
                 <div className="post-text">
                     {cleanContent}
                 </div>
-                {post.image_url && (
-                    <div className="post-image" onClick={(e) => { e.stopPropagation(); setShowImageZoom(true) }} style={{ cursor: 'zoom-in' }}>
-                        <img src={post.image_url} alt="Post" onError={(e) => e.target.style.display = 'none'} />
-                    </div>
+
+                {/* ── Unified media carousel ──────────────────────────────── */}
+                {renderMediaCarousel()}
+
+                {/* Image zoom modal (supports multi-image array) */}
+                {showImageZoom && imageUrls.length > 0 && (
+                    <ImageZoomModal
+                        imageUrls={imageUrls}
+                        initialIndex={zoomIndex < imageUrls.length ? zoomIndex : 0}
+                        onClose={() => setShowImageZoom(false)}
+                    />
                 )}
-                {showImageZoom && post.image_url && (
-                    <ImageZoomModal imageUrl={post.image_url} onClose={(e) => { setShowImageZoom(false) }} />
-                )}
-                {post.video_url && (
-                    <div className="post-video" style={{ marginTop: '12px' }} onClick={(e) => e.stopPropagation()}>
-                        <VideoPlayer
-                            src={post.video_url}
-                            onError={(e) => e.target.style.display = 'none'}
-                            id={post.id}
-                        />
-                    </div>
-                )}
+
                 {postLocation && (
                     <div className="post-location" onClick={openGoogleMaps}>
                         <i className="ri-map-pin-fill"></i>
