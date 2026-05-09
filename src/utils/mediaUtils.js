@@ -102,3 +102,37 @@ export function parseMediaUrls(urlField) {
         return [urlField]
     }
 }
+
+/**
+ * Calculate optimal grid columns based on media count
+ * Used for responsive image grid layout
+ *
+ * @param {number} mediaCount
+ * @returns {number} Number of columns (1-3)
+ */
+export function getGridColumns(mediaCount) {
+    if (mediaCount <= 1) return 1
+    if (mediaCount <= 2) return 2
+    if (mediaCount <= 4) return 2
+    if (mediaCount <= 6) return 3
+    return 3 // 3 columns for 7+ images
+}
+
+/**
+ * Revoke all object URLs in media items array to free memory
+ * Called on cleanup to prevent memory leaks
+ *
+ * @param {Array} mediaItems - Array of media items with preview URLs
+ */
+export function revokeMediaUrls(mediaItems) {
+    if (!Array.isArray(mediaItems)) return
+    mediaItems.forEach(item => {
+        if (item?.preview) {
+            try {
+                URL.revokeObjectURL(item.preview)
+            } catch (e) {
+                console.warn('Error revoking URL:', e)
+            }
+        }
+    })
+}
