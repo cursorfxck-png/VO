@@ -33,6 +33,7 @@ function App() {
   const [isViewingStory, setIsViewingStory] = useState(false)
   const [messageNotifications, setMessageNotifications] = useState([])
   const [lastMessageIds, setLastMessageIds] = useState(new Set())
+  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 800)
   const presenceHeartbeatRef = useRef(null)
 
   const navigate = useNavigate()
@@ -102,6 +103,13 @@ function App() {
       updatePresence(session.user.id, false)
     }
   }, [session])
+
+  // ── Mobile view detection ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handleResize = () => setIsMobileView(window.innerWidth <= 800)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // ── Right-sidebar resize ───────────────────────────────────────────────────
   useEffect(() => {
@@ -265,15 +273,6 @@ function App() {
       </ErrorBoundary>
     )
   }
-
-  // ── Check if mobile view ──────────────────────────────────────────────────
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 800)
-  
-  useEffect(() => {
-    const handleResize = () => setIsMobileView(window.innerWidth <= 800)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
 
   // ── Authenticated layout ───────────────────────────────────────────────────
   return (
