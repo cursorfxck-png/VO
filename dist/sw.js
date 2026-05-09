@@ -3,10 +3,7 @@ const CACHE_NAME = 'voguex-v1'
 const urlsToCache = [
   '/',
   '/index.html',
-  '/src/main.jsx',
-  '/src/index.css',
-  '/logo.svg',
-  '/download.png'
+  '/logo.svg'
 ]
 
 // Install Service Worker
@@ -16,6 +13,9 @@ self.addEventListener('install', (event) => {
       .then((cache) => {
         console.log('Opened cache')
         return cache.addAll(urlsToCache)
+      })
+      .catch((error) => {
+        console.error('Cache installation failed:', error)
       })
   )
 })
@@ -30,8 +30,11 @@ self.addEventListener('fetch', (event) => {
           return response
         }
         return fetch(event.request)
-      }
-    )
+      })
+      .catch(() => {
+        // Return offline page if both cache and network fail
+        return caches.match('/')
+      })
   )
 })
 
