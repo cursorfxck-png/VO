@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VogueX</title>
+  <link rel="stylesheet" href="css/font.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: 'Inter', 'Inter-Regular', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    /* ── App shell: centred, max 430px, full height ── */
+    .app {
+      width: 100%;
+      max-width: 430px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0 auto;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* ── Status bar spacer (iPhone notch area) ── */
+    .status-bar {
+      height: env(safe-area-inset-top, 44px);
+      min-height: 44px;
+      flex-shrink: 0;
+    }
+
+    /* ════════════════════════════════════════
+       HEADER
+    ════════════════════════════════════════ */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 17px;
+      height: 56px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .header-profile-btn {
+      width: 34px;
+      height: 34px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .header-profile-btn img {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .header-logo {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .header-logo img {
+      width: 52px;
+      height: auto;
+      object-fit: contain;
+    }
+
+    /* ════════════════════════════════════════
+       SEARCH BAR
+    ════════════════════════════════════════ */
+    .search-wrap {
+      padding: 8px 18px;
+      flex-shrink: 0;
+    }
+
+    .search-bar {
+      width: 100%;
+      height: 52px;
+      background: #666;
+      border-radius: 116px;
+      display: flex;
+      align-items: center;
+      padding: 0 22px;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .search-bar:active {
+      background: #555;
+    }
+
+    .search-bar img.search-icon {
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .search-bar span {
+      font-size: 15px;
+      font-weight: 400;
+      color: #fff;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    /* ════════════════════════════════════════
+       TABS (pill style)
+    ════════════════════════════════════════ */
+    .tabs-wrap {
+      padding: 6px 10px 0;
+      flex-shrink: 0;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      height: 40px;
+      background: rgba(29, 29, 29, 0.33);
+      border-radius: 90px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* sliding pill indicator */
+    .tabs-indicator {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      border-radius: 90px;
+      background: rgba(255,255,255,0.15);
+      transition: left 0.25s cubic-bezier(.4,0,.2,1), width 0.25s cubic-bezier(.4,0,.2,1);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .tab-btn {
+      flex: 1;
+      height: 100%;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.55);
+      font-size: 12px;
+      font-weight: 900;
+      font-family: 'Inter', 'Inter-Black', sans-serif;
+      cursor: pointer;
+      position: relative;
+      z-index: 1;
+      letter-spacing: 0.3px;
+      transition: color 0.2s;
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+
+    .tab-btn.active {
+      color: #fff;
+    }
+
+    .tab-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255,255,255,0.18);
+      flex-shrink: 0;
+      z-index: 1;
+    }
+
+    /* ════════════════════════════════════════
+       STORIES ROW
+    ════════════════════════════════════════ */
+    .stories-row {
+      display: flex;
+      gap: 12px;
+      padding: 16px 20px 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      flex-shrink: 0;
+    }
+
+    .stories-row::-webkit-scrollbar { display: none; }
+
+    .story {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .story-avatar {
+      width: 72px;
+      height: 58px;
+      border-radius: 55px;
+      background: #505050;
+      position: relative;
+      overflow: visible;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .story-avatar img.story-img {
+      width: 100%;
+      height: 100%;
+      border-radius: 55px;
+      object-fit: cover;
+    }
+
+    .add-story-btn {
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 16px;
+      background: #ff00aa;
+      border-radius: 128px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      z-index: 2;
+    }
+
+    .add-story-btn img {
+      width: 10px;
+      height: 10px;
+      object-fit: contain;
+    }
+
+    .story-name {
+      font-size: 12px;
+      font-weight: 900;
+      font-family: 'Inter', 'Inter-Black', sans-serif;
+      color: #fff;
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    /* ════════════════════════════════════════
+       DIVIDER
+    ════════════════════════════════════════ */
+    .divider {
+      height: 1px;
+      background: #fff;
+      margin: 14px 0 0;
+      flex-shrink: 0;
+    }
+
+    /* ════════════════════════════════════════
+       FEED / POSTS
+    ════════════════════════════════════════ */
+    .feed {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .post {
+      padding: 16px 17px 0;
+    }
+
+    /* Post header row */
+    .post-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .post-avatar {
+      width: 52px;
+      height: 50px;
+      border-radius: 50%;
+      background: #d9d9d9;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .post-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .post-meta {
+      flex: 1;
+      padding-top: 4px;
+    }
+
+    .post-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .post-name {
+      font-size: 19px;
+      font-weight: 900;
+      font-family: 'Inter', 'Inter-Black', sans-serif;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .verified-icon {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .post-time {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: #a3a3a3;
+      letter-spacing: -0.3px;
+      margin-top: 3px;
+    }
+
+    /* Post media */
+    .post-media {
+      width: 100%;
+      border-radius: 28px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 10px;
+      background: #1a1a1a;
+      aspect-ratio: 4/3;
+    }
+
+    .post-media img,
+    .post-media video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Like pill overlay */
+    .like-overlay {
+      position: absolute;
+      bottom: 14px;
+      left: 18px;
+      width: 130px;
+      height: 50px;
+      background: rgba(50,50,50,0.43);
+      border-radius: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .like-overlay:active {
+      background: rgba(80,80,80,0.6);
+    }
+
+    .like-overlay img {
+      width: 30px;
+      height: 30px;
+      object-fit: contain;
+    }
+
+    /* Post action bar */
+    .post-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2px;
+      margin-bottom: 8px;
+    }
+
+    .action-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      padding: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background 0.15s;
+    }
+
+    .action-btn:active {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .action-btn img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+
+    .post-caption {
+      font-size: 18px;
+      font-weight: 400;
+      letter-spacing: -0.6px;
+      color: #fff;
+      line-height: 1.35;
+      padding: 0 4px 16px;
+    }
+
+    /* ════════════════════════════════════════
+       BOTTOM NAV
+    ════════════════════════════════════════ */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 430px;
+      z-index: 100;
+      padding: 0 20px;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: #000;
+    }
+
+    .nav-inner {
+      position: relative;
+      height: 70px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-top: 8px;
+    }
+
+    /* grey pill background */
+    .nav-pill-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 60px; /* leave room for profile btn */
+      height: 66px;
+      background: #707070;
+      border-radius: 70px;
+      z-index: 0;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding-top: 10px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: #fff;
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      transition: opacity 0.15s;
+    }
+
+    .nav-item:active { opacity: 0.7; }
+
+    .nav-item img {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .nav-label {
+      font-size: 13px;
+      font-weight: 400;
+      color: #fff;
+      line-height: 1;
+    }
+
+    /* Profile button — right side, outside pill */
+    .nav-profile-btn {
+      position: absolute;
+      right: 0;
+      top: 4px;
+      width: 64px;
+      height: 62px;
+      background: rgba(135,135,135,0.2);
+      border-radius: 60px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 1;
+      transition: background 0.15s;
+    }
+
+    .nav-profile-btn:active {
+      background: rgba(135,135,135,0.4);
+    }
+
+    .nav-profile-btn img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+
+    /* ════════════════════════════════════════
+       MEDIA QUERIES — ensure it fills narrow screens
+    ════════════════════════════════════════ */
+    @media (max-width: 390px) {
+      .post-name { font-size: 17px; }
+      .tab-btn { font-size: 11px; }
+      .nav-label { font-size: 12px; }
+    }
+
+    @media (min-width: 431px) {
+      /* On wider screens keep the phone-frame look */
+      body { background: #111; }
+      .app {
+        border-left: 1px solid #222;
+        border-right: 1px solid #222;
+      }
+    }
+
+    /* ── Smooth scroll ── */
+    .feed {
+      scroll-behavior: smooth;
+    }
+
+    /* ── Active tab underline (optional extra) ── */
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 20px;
+      height: 3px;
+      background: #fff;
+      border-radius: 2px;
+    }
+
+    /* ── Post media placeholder colour ── */
+    .post-media-placeholder {
+      width: 100%;
+      aspect-ratio: 4/3;
+      border-radius: 28px;
+      background: #008304;
+      filter: blur(2px);
+      margin-bottom: 10px;
+    }
+
+    /* ── Verified badge SVG inline ── */
+    .verified-svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Status bar spacer -->
+  <div class="status-bar"></div>
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <button class="header-profile-btn" aria-label="Profile">
+      <img src="image/Group.png" alt="Profile">
+    </button>
+
+    <div class="header-logo">
+      <img src="image/logo_1.png" alt="VogueX Logo">
+    </div>
+  </header>
+
+  <!-- ── SEARCH BAR ── -->
+  <div class="search-wrap">
+    <div class="search-bar" role="search" tabindex="0">
+      <img src="image/Vector_3.png" alt="Search" class="search-icon">
+      <span>SEARCH POST</span>
+    </div>
+  </div>
+
+  <!-- ── TABS ── -->
+  <div class="tabs-wrap">
+    <div class="tabs" role="tablist">
+      <div class="tabs-indicator" id="tabIndicator"></div>
+      <button class="tab-btn active" role="tab" aria-selected="true"  data-tab="0" onclick="switchTab(0)">FOR YOU</button>
+      <div class="tab-divider"></div>
+      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="1" onclick="switchTab(1)">TRENDING</button>
+      <div class="tab-divider"></div>
+      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="2" onclick="switchTab(2)">FOLLOWING</button>
+    </div>
+  </div>
+
+  <!-- ── STORIES ── -->
+  <div class="stories-row" id="storiesRow">
+    <!-- "You" story -->
+    <div class="story">
+      <div class="story-avatar">
+        <button class="add-story-btn" aria-label="Add story">
+          <img src="image/divmdi_plus.png" alt="+">
+        </button>
+      </div>
+      <span class="story-name">YOU</span>
+    </div>
+    <!-- Placeholder stories (would be populated from backend) -->
+    <div class="story">
+      <div class="story-avatar" style="background:#3a3a3a;"></div>
+      <span class="story-name">PRIYA</span>
+    </div>
+    <div class="story">
+      <div class="story-avatar" style="background:#2a2a2a;"></div>
+      <span class="story-name">ARYAN</span>
+    </div>
+    <div class="story">
+      <div class="story-avatar" style="background:#333;"></div>
+      <span class="story-name">MEERA</span>
+    </div>
+  </div>
+
+  <!-- ── DIVIDER ── -->
+  <div class="divider"></div>
+
+  <!-- ── FEED ── -->
+  <main class="feed" id="feed">
+
+    <!-- POST 1 -->
+    <article class="post">
+      <div class="post-header">
+        <div class="post-avatar">
+          <img src="image/Group.png" alt="PRIYA avatar">
+        </div>
+        <div class="post-meta">
+          <div class="post-name-row">
+            <span class="post-name">PRIYA</span>
+            <!-- Verified badge inline SVG -->
+            <svg class="verified-svg" viewBox="0 0 22 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7.6 21L5.7 17.8L2.1 17L2.45 13.3L0 10.5L2.45 7.7L2.1 4L5.7 3.2L7.6 0L11 1.45L14.4 0L16.3 3.2L19.9 4L19.55 7.7L22 10.5L19.55 13.3L19.9 17L16.3 17.8L14.4 21L11 19.55L7.6 21ZM9.95 14.05L15.6 8.4L14.2 6.95L9.95 11.2L7.8 9.1L6.4 10.5L9.95 14.05Z" fill="#0077FF"/>
+            </svg>
+          </div>
+          <span class="post-time">24 min ago</span>
+        </div>
+      </div>
+
+      <!-- Media -->
+      <div class="post-media">
+        <!-- Green placeholder matching the design -->
+        <div style="width:100%;height:100%;background:#008304;filter:blur(2px);"></div>
+        <!-- Like pill overlay -->
+        <div class="like-overlay" role="button" aria-label="Like">
+          <img src="image/Vector_7.png" alt="Like">
+        </div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="post-actions">
+        <div class="action-group">
+          <button class="action-btn" aria-label="Like">
+            <img src="image/Vector_7.png" alt="Like">
+          </button>
+          <button class="action-btn" aria-label="Comment">
+            <img src="image/Vector_8.png" alt="Comment">
+          </button>
+        </div>
+        <button class="action-btn" aria-label="Share">
+          <img src="image/Vector_9.png" alt="Share">
+        </button>
+      </div>
+
+      <p class="post-caption">ITS A NICE DAY ❤❤</p>
+    </article>
+
+    <!-- More posts would be injected here by JS / backend -->
+
+  </main>
+
+  <!-- ── BOTTOM NAV ── -->
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <!-- Pill background (covers Home, Explore, Messages) -->
+      <div class="nav-pill-bg"></div>
+
+      <!-- Home -->
+      <button class="nav-item" aria-label="Home" onclick="navTo('home')">
+        <img src="image/Vector.png" alt="Home">
+        <span class="nav-label">Home</span>
+      </button>
+
+      <!-- Explore -->
+      <button class="nav-item" aria-label="Explore" onclick="navTo('explore')">
+        <img src="image/Vector_0.png" alt="Explore">
+        <span class="nav-label">Explore</span>
+      </button>
+
+      <!-- Messages -->
+      <button class="nav-item" aria-label="Messages" onclick="navTo('messages')">
+        <img src="image/Vector_1.png" alt="Messages">
+        <span class="nav-label">Messages</span>
+      </button>
+
+      <!-- Profile (outside pill) -->
+      <button class="nav-profile-btn" aria-label="Profile" onclick="navTo('profile')">
+        <img src="image/Vector_2.png" alt="Profile">
+      </button>
+    </div>
+  </nav>
+
+</div><!-- /.app -->
+
+<script>
+  /* ── Tab switching ── */
+  function switchTab(index) {
+    const tabs = document.querySelectorAll('.tab-btn');
+    const indicator = document.getElementById('tabIndicator');
+
+    tabs.forEach((t, i) => {
+      t.classList.toggle('active', i === index);
+      t.setAttribute('aria-selected', i === index);
+    });
+
+    // Move indicator to active tab
+    const activeTab = tabs[index];
+    const tabsEl = activeTab.closest('.tabs');
+    const tabRect = activeTab.getBoundingClientRect();
+    const tabsRect = tabsEl.getBoundingClientRect();
+    indicator.style.left   = (tabRect.left - tabsRect.left + 4) + 'px';
+    indicator.style.width  = (tabRect.width - 8) + 'px';
+  }
+
+  /* ── Init indicator position ── */
+  window.addEventListener('load', () => {
+    switchTab(0);
+  });
+
+  /* ── Nav routing (stub — wire to your React router / SPA) ── */
+  function navTo(page) {
+    console.log('Navigate to:', page);
+    // In the real app this would call your React router or
+    // postMessage to the parent frame, e.g.:
+    // window.parent.postMessage({ type: 'navigate', page }, '*');
+  }
+
+  /* ── Search bar focus ── */
+  document.querySelector('.search-bar').addEventListener('click', () => {
+    // Trigger search in parent app
+    console.log('Search clicked');
+  });
+
+  /* ── Like button toggle ── */
+  document.querySelectorAll('.action-btn[aria-label="Like"], .like-overlay').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      this.classList.toggle('liked');
+      const img = this.querySelector('img');
+      if (img) {
+        img.style.filter = this.classList.contains('liked')
+          ? 'invert(27%) sepia(100%) saturate(7000%) hue-rotate(320deg) brightness(1)'
+          : '';
+      }
+    });
+  });
+
+  /* ── Pull-to-refresh (visual only) ── */
+  let startY = 0;
+  const feed = document.getElementById('feed');
+  feed.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+  feed.addEventListener('touchend', e => {
+    const dy = e.changedTouches[0].clientY - startY;
+    if (dy > 80 && feed.scrollTop === 0) {
+      console.log('Pull to refresh triggered');
+      // wire to your fetchPosts() here
+    }
+  }, { passive: true });
+</script>
+</body>
+</html>
