@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../supabaseClient'
 
 /**
  * MobileLayout - VogueX mobile-first wrapper
@@ -13,10 +14,74 @@ import { useState } from 'react'
  */
 export default function MobileLayout({ children, onNavClick, currentView, session, onProfileClick, onComposeClick }) {
   const [activeTab, setActiveTab] = useState('for-you')
+  const [stories, setStories] = useState([])
+  const [storiesLoading, setStoriesLoading] = useState(true)
+
+  useEffect(() => {
+    fetchStories()
+    const channel = supabase
+      .channel('public:stories')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [session])
+
+  const fetchStories = async () => {
+    try {
+      setStoriesLoading(true)
+      const { data: storiesData, error } = await supabase
+        .from('stories')
+        .select(`
+          id,
+          user_id,
+          media_url,
+          media_type,
+          created_at,
+          profiles!stories_user_id_fkey (
+            id,
+            username,
+            full_name,
+            avatar_url
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) throw error
+
+      // Group stories by user
+      const grouped = {}
+      if (storiesData) {
+        storiesData.forEach(story => {
+          const userId = story.user_id
+          if (!grouped[userId]) {
+            grouped[userId] = {
+              userId,
+              profile: story.profiles,
+              stories: []
+            }
+          }
+          grouped[userId].stories.push(story)
+        })
+      }
+
+      setStories(Object.values(grouped).slice(0, 6))
+    } catch (err) {
+      console.error('[v0] Error fetching stories:', err)
+    } finally {
+      setStoriesLoading(false)
+    }
+  }
 
   const handleTabClick = (tab) => {
     setActiveTab(tab)
     if (onNavClick) onNavClick(tab)
+  }
+
+  const handleStoryClick = (storyGroup) => {
+    if (onNavClick) {
+      onNavClick('story-view', storyGroup)
+    }
   }
 
   return (
@@ -91,7 +156,8 @@ export default function MobileLayout({ children, onNavClick, currentView, sessio
 
       {/* Stories Row */}
       <div className="stories-row">
-        <div className="story">
+        {/* Add Your Story button */}
+        <button className="story" onClick={() => onNavClick?.('compose-story')} style={{ background: 'none', border: 'none', padding: '0' }}>
           <div className="story-avatar">
             <div style={{
               width: '100%',
@@ -104,28 +170,55 @@ export default function MobileLayout({ children, onNavClick, currentView, sessio
             }}>
               <i className="ri-add-line" style={{ color: '#fff', fontSize: '28px' }}></i>
             </div>
-            <button className="add-story-btn">
+            <button className="add-story-btn" type="button">
               <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/divmdi_plus-zY9mUkqsSb7NBGOmIMBIazt48GEp2N.png" alt="Add" />
             </button>
           </div>
           <div className="story-name">Your Story</div>
-        </div>
+        </button>
 
-        {/* Sample stories - replace with dynamic */}
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="story">
-            <div className="story-avatar">
-              <div style={{
+        {/* Render real stories */}
+        {storiesLoading ? (
+          [1, 2, 3].map((i) => (
+            <div key={i} className="story" style={{ opacity: 0.5 }}>
+              <div className="story-avatar" style={{ background: '#333' }}></div>
+              <div className="story-name">Loading...</div>
+            </div>
+          ))
+        ) : stories.length > 0 ? (
+          stories.map((storyGroup) => (
+            <button
+              key={storyGroup.userId}
+              className="story"
+              onClick={() => handleStoryClick(storyGroup)}
+              style={{ background: 'none', border: 'none', padding: '0', cursor: 'pointer' }}
+            >
+              <div className="story-avatar">
+                <img 
+                  src={storyGroup.profile?.avatar_url || '/download.png'} 
+                  alt={storyGroup.profile?.username}
+                  className="story-img"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+              <div className="story-name">{storyGroup.profile?.username || 'User'}</div>
+            </button>
+          ))
+        ) : (
+          // Fallback if no stories
+          [1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="story">
+              <div className="story-avatar" style={{
                 width: '100%',
                 height: '100%',
                 borderRadius: '55px',
                 background: `hsl(${i * 60}, 70%, 50%)`,
                 opacity: 0.6
               }}></div>
+              <div className="story-name">{`Story ${i}`}</div>
             </div>
-            <div className="story-name">{`Story ${i}`}</div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Divider */}
