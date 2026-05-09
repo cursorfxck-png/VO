@@ -279,7 +279,8 @@ export default function Feed({ session, onViewProfile, onViewingStoryChange, isV
                     <LoadingSpinner />
                 </div>
             )}
-            <header className="feed-header" style={{ display: (isViewingStory || isEditingStory) ? 'none' : 'block' }}>
+            {/* Feed header hidden on mobile - MobileLayout provides it */}
+            <header className="feed-header" style={{ display: (isViewingStory || isEditingStory || window.innerWidth <= 800) ? 'none' : 'block' }}>
                 <div className="header-top">
                     <div
                         className="mini-avatar"
@@ -357,11 +358,10 @@ export default function Feed({ session, onViewProfile, onViewingStoryChange, isV
                         Following
                     </button>
                 </div>
-
             </header>
 
-            {/* Mobile Stories Bar */}
-            <div className="mobile-stories-wrapper">
+            {/* Mobile Stories Bar - hidden on mobile view since MobileLayout provides it */}
+            <div className="mobile-stories-wrapper" style={{ display: window.innerWidth <= 800 ? 'none' : 'block' }}>
                 <Stories session={session} mode="mobile" onViewingChange={handleStoryViewingChange} onEditorChange={handleStoryEditorChange} />
             </div>
 
