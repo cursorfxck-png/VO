@@ -17,15 +17,7 @@ export default function MobileLayout({ children, onNavClick, currentView, sessio
   const [stories, setStories] = useState([])
   const [storiesLoading, setStoriesLoading] = useState(true)
 
-  useEffect(() => {
-    fetchStories()
-    const channel = supabase
-      .channel('public:stories')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [session])
-
+  // Define fetchStories before useEffect to avoid hooks violation
   const fetchStories = async () => {
     try {
       setStoriesLoading(true)
@@ -68,10 +60,28 @@ export default function MobileLayout({ children, onNavClick, currentView, sessio
       setStories(Object.values(grouped).slice(0, 6))
     } catch (err) {
       console.error('[v0] Error fetching stories:', err)
+      setStories([])
     } finally {
       setStoriesLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (session) {
+      fetchStories()
+    }
+    
+    const channel = supabase
+      .channel('public:stories')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => {
+        fetchStories()
+      })
+      .subscribe()
+    
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [session?.user?.id])
 
   const handleTabClick = (tab) => {
     setActiveTab(tab)

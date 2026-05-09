@@ -17,6 +17,7 @@ import SinglePost from './components/SinglePost'
 import PublicProfile from './components/PublicProfile'
 import RightSidebar from './components/RightSidebar'
 import NotificationManager from './components/NotificationManager'
+import ErrorBoundary from './components/ErrorBoundary'
 import { formatDistanceToNow } from 'date-fns'
 
 function App() {
@@ -254,14 +255,14 @@ function App() {
   // Unauthenticated: show public routes OR guest feed
   if (!session) {
     return (
-      <>
+      <ErrorBoundary>
         <Routes>
           <Route path="/post/:postId" element={<SinglePost session={null} />} />
           <Route path="/u/:username" element={<PublicProfile session={null} />} />
           <Route path="/*" element={<GuestFeed />} />
         </Routes>
         <OfflineBanner />
-      </>
+      </ErrorBoundary>
     )
   }
 
@@ -276,7 +277,7 @@ function App() {
 
   // ── Authenticated layout ───────────────────────────────────────────────────
   return (
-    <>
+    <ErrorBoundary>
       <Routes>
         <Route path="/post/:postId" element={<SinglePost session={session} />} />
         <Route path="/u/:username" element={<PublicProfile session={session} />} />
@@ -374,7 +375,7 @@ function App() {
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, pointerEvents: 'none', zIndex: 100000 }}>
         <NotificationManager notifications={messageNotifications} onDismiss={handleDismissNotification} />
       </div>
-    </>
+    </ErrorBoundary>
   )
 }
 
