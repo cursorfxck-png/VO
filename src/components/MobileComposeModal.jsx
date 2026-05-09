@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { ImageIcon, VideoIcon, LocationIcon } from './GradientIcons'
-import { compressImage } from '../utils/mediaUtils'
+import { compressImage, getGridColumns, revokeMediaUrls } from '../utils/mediaUtils'
 
 const MAX_IMAGES = 10
 const MAX_VIDEOS = 2
@@ -15,11 +15,17 @@ export default function MobileComposeModal({ session, onClose }) {
     const [uploading, setUploading] = useState(false)
     const [uploadProgress, setUploadProgress] = useState('')
     const [mediaItems, setMediaItems] = useState([])
+    const [carouselIndex, setCarouselIndex] = useState(0)
+    const [touchStart, setTouchStart] = useState(0)
     const imageInputRef = useRef(null)
     const videoInputRef = useRef(null)
+    const carouselRef = useRef(null)
 
     const imageCount = mediaItems.filter(m => m.type === 'image').length
     const videoCount = mediaItems.filter(m => m.type === 'video').length
+    const images = mediaItems.filter(m => m.type === 'image')
+    const videos = mediaItems.filter(m => m.type === 'video')
+    const gridCols = getGridColumns(imageCount)
 
     useEffect(() => {
         setIsVisible(true)
@@ -34,7 +40,7 @@ export default function MobileComposeModal({ session, onClose }) {
     }
 
     const handleClose = () => {
-        mediaItems.forEach(m => { if (m.preview) URL.revokeObjectURL(m.preview) })
+        revokeMediaUrls(mediaItems)
         setIsVisible(false)
         setTimeout(onClose, 300)
     }
@@ -70,6 +76,9 @@ export default function MobileComposeModal({ session, onClose }) {
             if (item?.preview) URL.revokeObjectURL(item.preview)
             return prev.filter(m => m.id !== id)
         })
+        if (carouselIndex >= imageCount - 1) {
+            setCarouselIndex(Math.max(0, carouselIndex - 1))
+        }
     }
 
     const uploadImageFile = async (file, index, total) => {
@@ -104,9 +113,6 @@ export default function MobileComposeModal({ session, onClose }) {
                 alert('Please complete your profile first!')
                 return
             }
-
-            const images = mediaItems.filter(m => m.type === 'image')
-            const videos = mediaItems.filter(m => m.type === 'video')
 
             const imageUrls = await Promise.all(images.map((item, i) => uploadImageFile(item.file, i, images.length)))
             const videoUrls = []
@@ -145,8 +151,22 @@ export default function MobileComposeModal({ session, onClose }) {
         )
     }
 
-    const images = mediaItems.filter(m => m.type === 'image')
-    const videos = mediaItems.filter(m => m.type === 'video')
+    // Carousel touch handlers
+    const handleCarouselTouchStart = (e) => {
+        setTouchStart(e.touches[0].clientX)
+    }
+
+    const handleCarouselTouchEnd = (e) => {
+        const touchEnd = e.changedTouches[0].clientX
+        const diff = touchStart - touchEnd
+        if (Math.abs(diff) > 50 && images.length > 0) {
+            if (diff > 0) {
+                setCarouselIndex(prev => (prev + 1) % images.length)
+            } else {
+                setCarouselIndex(prev => (prev - 1 + images.length) % images.length)
+            }
+        }
+    }
 
     return (
         <div style={{
@@ -165,7 +185,7 @@ export default function MobileComposeModal({ session, onClose }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         <img src={userAvatar} style={{ width: '50px', height: '50px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)' }} alt="Avatar" />
-                        <h2 style={{ fontSize: '20px', fontWeight: '600', color: 'rgba(255,255,255,0.9)' }}>What's happening?</h2>
+                        <h2 style={{ fontSize: '20px', fontWeight: '600', color: 'rgba(255,255,255,0.9)' }}>What&apos;s happening?</h2>
                     </div>
                     <button onClick={handleClose} style={{ fontSize: '17px', color: 'rgba(255,255,255,0.7)', padding: '8px 16px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer' }}>
                         Cancel
@@ -173,38 +193,125 @@ export default function MobileComposeModal({ session, onClose }) {
                 </div>
 
                 {/* Content Area */}
-                <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)', padding: '20px', marginBottom: '20px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)', padding: '20px', marginBottom: '20px', display: 'flex', flexDirection: 'column', overflowY: 'auto', gap: '16px' }}>
                     <textarea
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                         placeholder="What's happening?"
                         autoFocus
-                        style={{ width: '100%', minHeight: '120px', background: 'transparent', border: 'none', color: 'var(--text-main)', fontSize: '18px', outline: 'none', resize: 'none', fontFamily: 'Inter, sans-serif' }}
+                        style={{ width: '100%', minHeight: '100px', background: 'transparent', border: 'none', color: 'var(--text-main)', fontSize: '18px', outline: 'none', resize: 'none', fontFamily: 'Inter, sans-serif' }}
                     />
 
-                    {/* Image grid preview */}
+                    {/* Image carousel with swipe support */}
                     {images.length > 0 && (
-                        <div className={`compose-media-grid compose-media-grid-${Math.min(images.length, 3)}`} style={{ marginTop: '12px' }}>
-                            {images.map(item => (
-                                <div key={item.id} className="compose-media-item">
-                                    <img src={item.preview} alt="preview" />
-                                    <button className="compose-media-remove" onClick={() => removeMedia(item.id)}>
-                                        <i className="ri-close-line"></i>
-                                    </button>
+                        <div style={{ flex: 1, minHeight: '250px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {/* Carousel */}
+                            <div 
+                                ref={carouselRef}
+                                onTouchStart={handleCarouselTouchStart}
+                                onTouchEnd={handleCarouselTouchEnd}
+                                style={{
+                                    flex: 1,
+                                    position: 'relative',
+                                    borderRadius: '16px',
+                                    overflow: 'hidden',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    minHeight: '200px',
+                                    cursor: 'grab'
+                                }}
+                            >
+                                <img 
+                                    src={images[carouselIndex]?.preview} 
+                                    alt={`Preview ${carouselIndex + 1}`}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        display: 'block'
+                                    }}
+                                />
+                                {/* Navigation arrows */}
+                                {images.length > 1 && (
+                                    <>
+                                        <button
+                                            onClick={() => setCarouselIndex(prev => (prev - 1 + images.length) % images.length)}
+                                            style={{
+                                                position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%',
+                                                width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+                                                justifyContent: 'center', color: 'white', cursor: 'pointer', zIndex: 5
+                                            }}
+                                        >
+                                            <i className="ri-arrow-left-s-line" style={{ fontSize: '18px' }}></i>
+                                        </button>
+                                        <button
+                                            onClick={() => setCarouselIndex(prev => (prev + 1) % images.length)}
+                                            style={{
+                                                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%',
+                                                width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+                                                justifyContent: 'center', color: 'white', cursor: 'pointer', zIndex: 5
+                                            }}
+                                        >
+                                            <i className="ri-arrow-right-s-line" style={{ fontSize: '18px' }}></i>
+                                        </button>
+                                    </>
+                                )}
+                                {/* Counter */}
+                                {images.length > 1 && (
+                                    <div style={{
+                                        position: 'absolute', top: '10px', right: '10px',
+                                        background: 'rgba(0,0,0,0.7)', color: 'white',
+                                        fontSize: '12px', fontWeight: '600', padding: '4px 10px',
+                                        borderRadius: '12px', zIndex: 5
+                                    }}>
+                                        {carouselIndex + 1}/{images.length}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Grid preview of all images */}
+                            {images.length > 1 && (
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: `repeat(${Math.min(gridCols, 4)}, 1fr)`,
+                                    gap: '8px',
+                                    maxHeight: '100px'
+                                }}>
+                                    {images.map((item, idx) => (
+                                        <div
+                                            key={item.id}
+                                            onClick={() => setCarouselIndex(idx)}
+                                            style={{
+                                                position: 'relative',
+                                                paddingBottom: '100%',
+                                                borderRadius: '8px',
+                                                overflow: 'hidden',
+                                                border: carouselIndex === idx ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)',
+                                                cursor: 'pointer',
+                                                opacity: carouselIndex === idx ? 1 : 0.6,
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                        >
+                                            <img 
+                                                src={item.preview} 
+                                                alt={`Thumb ${idx + 1}`}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 0, left: 0, width: '100%', height: '100%',
+                                                    objectFit: 'cover'
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                            {imageCount < MAX_IMAGES && (
-                                <button className="compose-media-add" onClick={() => imageInputRef.current?.click()}>
-                                    <i className="ri-add-line"></i>
-                                    <span>{imageCount}/{MAX_IMAGES}</span>
-                                </button>
                             )}
                         </div>
                     )}
 
                     {/* Video previews */}
                     {videos.map(item => (
-                        <div key={item.id} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)', marginTop: '12px' }}>
+                        <div key={item.id} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
                             <video src={item.preview} controls preload="metadata" playsInline style={{ borderRadius: '16px', maxHeight: '300px', width: '100%', display: 'block' }} />
                             <button onClick={() => removeMedia(item.id)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.8)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', zIndex: 10 }}>
                                 <i className="ri-close-line" style={{ color: 'white', fontSize: '18px' }}></i>
@@ -213,7 +320,7 @@ export default function MobileComposeModal({ session, onClose }) {
                     ))}
 
                     {location && (
-                        <div style={{ marginTop: '15px', padding: '10px 15px', background: 'rgba(0,122,255,0.1)', border: '1px solid rgba(0,122,255,0.3)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ marginTop: '10px', padding: '10px 15px', background: 'rgba(0,122,255,0.1)', border: '1px solid rgba(0,122,255,0.3)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#007AFF' }}>
                                 <i className="ri-map-pin-fill"></i>
                                 <span style={{ fontSize: '14px' }}>{location}</span>
@@ -223,7 +330,7 @@ export default function MobileComposeModal({ session, onClose }) {
                     )}
 
                     {uploading && uploadProgress && (
-                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <i className="ri-loader-4-line" style={{ animation: 'spin 1s linear infinite' }}></i>
                             {uploadProgress}
                         </div>

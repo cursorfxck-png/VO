@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import { ImageIcon, VideoIcon, LocationIcon } from './GradientIcons'
 import { validateContent } from '../utils/contentModeration'
 import ContentWarningModal from './ContentWarningModal'
-import { compressImage, parseMediaUrls } from '../utils/mediaUtils'
+import { compressImage, parseMediaUrls, getGridColumns, revokeMediaUrls } from '../utils/mediaUtils'
 
 const MAX_IMAGES = 10
 const MAX_VIDEOS = 2
@@ -14,10 +14,9 @@ export default function ComposeBox({ session }) {
     const [location, setLocation] = useState(null)
     const [userAvatar, setUserAvatar] = useState('/download.png')
     const [uploading, setUploading] = useState(false)
-    const [uploadProgress, setUploadProgress] = useState('') // status text
+    const [uploadProgress, setUploadProgress] = useState('')
     const [showContentWarning, setShowContentWarning] = useState(false)
     const [warningMessage, setWarningMessage] = useState('')
-    // mediaItems: [{id, type:'image'|'video', file, preview, url}]
     const [mediaItems, setMediaItems] = useState([])
     const imageInputRef = useRef(null)
     const videoInputRef = useRef(null)
@@ -45,7 +44,6 @@ export default function ComposeBox({ session }) {
     const sanitizeContent = (text) =>
         text.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim().substring(0, 5000)
 
-    // ── Upload helpers ─────────────────────────────────────────────────────────
     const uploadImageFile = async (file, index, total) => {
         setUploadProgress(`Compressing image ${index + 1}/${total}…`)
         const compressed = await compressImage(file, { maxSizeMB: 0.8, quality: 0.72 })
@@ -74,11 +72,10 @@ export default function ComposeBox({ session }) {
         return publicUrl
     }
 
-    // ── File select handlers ───────────────────────────────────────────────────
     const handleImageSelect = (e) => {
         const files = Array.from(e.target.files || [])
         if (!files.length) return
-        e.target.value = '' // reset so same file can be picked again
+        e.target.value = ''
 
         const remaining = MAX_IMAGES - imageCount
         if (remaining <= 0) { alert(`Maximum ${MAX_IMAGES} images allowed`); return }
@@ -102,7 +99,7 @@ export default function ComposeBox({ session }) {
         const remaining = MAX_VIDEOS - videoCount
         if (remaining <= 0) { alert(`Maximum ${MAX_VIDEOS} videos allowed`); return }
 
-        const file = files[0] // one at a time
+        const file = files[0]
         const isAudio = file.type.startsWith('audio/')
         const isVideo = file.type.startsWith('video/')
         if (!isVideo && !isAudio) { alert('Select a video or audio (MP3) file'); return }
@@ -126,7 +123,6 @@ export default function ComposeBox({ session }) {
         })
     }
 
-    // ── Post ──────────────────────────────────────────────────────────────────
     const handlePost = async () => {
         if (!content.trim() && mediaItems.length === 0) return
 
@@ -151,9 +147,7 @@ export default function ComposeBox({ session }) {
                 return
             }
 
-            // Upload all media
             const images = mediaItems.filter(m => m.type === 'image')
-            // Both video and audio go to the videos bucket; audio URLs get stored in video_url too
             const videos = mediaItems.filter(m => m.type === 'video' || m.type === 'audio')
 
             const imageUrls = await Promise.all(
@@ -179,8 +173,7 @@ export default function ComposeBox({ session }) {
 
             if (error) throw error
 
-            // Clean up previews
-            mediaItems.forEach(m => { if (m.preview) URL.revokeObjectURL(m.preview) })
+            revokeMediaUrls(mediaItems)
             setContent('')
             setMediaItems([])
             setLocation(null)
@@ -203,33 +196,85 @@ export default function ComposeBox({ session }) {
         )
     }
 
-    // ── Media preview grid ────────────────────────────────────────────────────
     const renderMediaPreviews = () => {
         if (mediaItems.length === 0) return null
         const images = mediaItems.filter(m => m.type === 'image')
         const videos = mediaItems.filter(m => m.type === 'video')
+        const cols = getGridColumns(images.length)
 
         return (
             <div style={{ marginTop: '12px' }}>
-                {/* Image grid */}
+                {/* Responsive image grid with scrollable support for 10+ items */}
                 {images.length > 0 && (
-                    <div className={`compose-media-grid compose-media-grid-${Math.min(images.length, 3)}`}>
+                    <div className="compose-media-grid-responsive" style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                        gap: '8px',
+                        marginBottom: videos.length > 0 ? '12px' : '0',
+                        maxHeight: images.length > 4 ? '220px' : 'auto',
+                        overflowY: images.length > 9 ? 'auto' : 'visible',
+                        paddingRight: images.length > 9 ? '4px' : '0'
+                    }}>
                         {images.map((item) => (
-                            <div key={item.id} className="compose-media-item">
-                                <img src={item.preview} alt="preview" />
-                                <button className="compose-media-remove" onClick={() => removeMedia(item.id)}>
+                            <div key={item.id} style={{
+                                position: 'relative',
+                                paddingBottom: '100%',
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                background: 'rgba(255,255,255,0.05)'
+                            }}>
+                                <img src={item.preview} alt="preview" style={{
+                                    position: 'absolute',
+                                    top: 0, left: 0, width: '100%', height: '100%',
+                                    objectFit: 'cover'
+                                }} />
+                                <button onClick={() => removeMedia(item.id)} style={{
+                                    position: 'absolute',
+                                    top: '4px', right: '4px',
+                                    background: 'rgba(0,0,0,0.7)',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '24px',
+                                    height: '24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'white',
+                                    zIndex: 5,
+                                    fontSize: '14px'
+                                }}>
                                     <i className="ri-close-line"></i>
                                 </button>
                             </div>
                         ))}
                         {imageCount < MAX_IMAGES && (
                             <button
-                                className="compose-media-add"
                                 onClick={() => imageInputRef.current?.click()}
                                 title="Add more images"
+                                style={{
+                                    paddingBottom: '100%',
+                                    position: 'relative',
+                                    borderRadius: '12px',
+                                    overflow: 'hidden',
+                                    background: 'rgba(255,255,255,0.06)',
+                                    border: '1px dashed rgba(255,255,255,0.2)',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
                             >
-                                <i className="ri-add-line"></i>
-                                <span>{imageCount}/{MAX_IMAGES}</span>
+                                <div style={{
+                                    position: 'absolute',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="ri-add-line" style={{ fontSize: '20px', color: 'var(--text-muted)' }}></i>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{imageCount}/{MAX_IMAGES}</span>
+                                </div>
                             </button>
                         )}
                     </div>
@@ -237,11 +282,10 @@ export default function ComposeBox({ session }) {
 
                 {/* Video / Audio previews */}
                 {videos.length > 0 && (
-                    <div style={{ marginTop: images.length > 0 ? '8px' : '0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {videos.map((item) => (
                             <div key={item.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
                                 {item.type === 'audio' ? (
-                                    /* Audio preview pill */
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
                                         <div style={{
                                             width: '40px', height: '36px', borderRadius: '50px',
@@ -256,7 +300,6 @@ export default function ComposeBox({ session }) {
                                             </div>
                                             <div style={{ fontSize: '11px', color: '#ffc300', fontWeight: 700, marginTop: '2px' }}>MP3</div>
                                         </div>
-                                        <audio src={item.preview} controls style={{ display: 'none' }} />
                                     </div>
                                 ) : (
                                     <video
@@ -330,7 +373,6 @@ export default function ComposeBox({ session }) {
 
                 <div className="compose-actions">
                     <div className="icon-set" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-                        {/* Image upload — disabled when max reached */}
                         <label style={{ cursor: imageCount >= MAX_IMAGES ? 'not-allowed' : 'pointer', opacity: imageCount >= MAX_IMAGES ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
                             title={`Add images (${imageCount}/${MAX_IMAGES})`}>
                             <ImageIcon size={24} />
@@ -345,7 +387,6 @@ export default function ComposeBox({ session }) {
                             />
                         </label>
 
-                        {/* Video / Audio upload — disabled when max reached */}
                          <label style={{ cursor: videoCount >= MAX_VIDEOS ? 'not-allowed' : 'pointer', opacity: videoCount >= MAX_VIDEOS ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
                             title={`Add video or MP3 audio (${videoCount}/${MAX_VIDEOS})`}>
                             <VideoIcon size={24} />
@@ -363,7 +404,6 @@ export default function ComposeBox({ session }) {
                             <LocationIcon size={24} />
                         </div>
 
-                        {/* Media count badge */}
                         {mediaItems.length > 0 && (
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.07)', padding: '3px 8px', borderRadius: '10px' }}>
                                 {imageCount > 0 && `${imageCount} img`}

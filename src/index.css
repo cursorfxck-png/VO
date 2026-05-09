@@ -2375,3 +2375,248 @@ Delete modal animations */
 .messages-scroll-area {
   overscroll-behavior: contain;
 }
+
+/* ============================================================
+   MOBILE-FIRST COMPOSE BOX & MEDIA GRID STYLES (VogueX Design)
+   ============================================================ */
+
+/* Responsive media grid for compose box - supports 10+ images */
+.compose-media-grid-responsive {
+  /* Grid is applied via inline styles, CSS just adds refinements */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.compose-media-grid-responsive::-webkit-scrollbar {
+  width: 6px;
+}
+
+.compose-media-grid-responsive::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.compose-media-grid-responsive::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.compose-media-grid-responsive::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Image carousel container */
+.post-media-carousel {
+  position: relative;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* Carousel indicators/dots styling */
+.carousel-dot {
+  transition: width 0.25s ease, background 0.2s ease;
+}
+
+.carousel-dot:hover {
+  background: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Touch-friendly carousel navigation */
+@media (max-width: 700px) {
+  .post-media-carousel button[aria-label^="Previous"],
+  .post-media-carousel button[aria-label^="Next"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+/* Smooth transitions for carousel */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.post-media-carousel img {
+  animation: slideIn 0.3s ease-out;
+}
+
+.post-media-carousel video {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Mobile-optimized compose box */
+@media (max-width: 700px) {
+  .compose-box {
+    padding: 12px;
+    gap: 10px;
+    sticky: bottom;
+    background: rgba(0, 0, 0, 0.95);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .compose-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .compose-input {
+    font-size: 16px;
+    padding: 8px 0;
+  }
+
+  .compose-actions {
+    padding-left: 46px;
+    gap: 8px;
+  }
+
+  .icon-set {
+    gap: 10px;
+  }
+
+  .icon-set i {
+    font-size: 18px;
+  }
+
+  /* Media grid on mobile - more compact */
+  .compose-media-grid-responsive {
+    max-height: 180px;
+    gap: 6px;
+  }
+
+  /* Touch-friendly image removal buttons */
+  .compose-media-grid-responsive button {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* Mobile compose modal carousel improvements */
+@media (max-width: 700px) {
+  /* Better carousel for narrow screens */
+  .compose-media-grid-responsive img {
+    max-height: 250px;
+  }
+
+  /* Make swipe gestures more responsive */
+  [role="img"] {
+    touch-action: none;
+  }
+}
+
+/* Responsive grid columns for media items */
+.compose-media-item-mobile {
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+
+.compose-media-add-mobile {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Safe area support for iPhone notch */
+@supports (padding: max(0px)) {
+  @media (max-width: 700px) {
+    .compose-box {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    .modal {
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+  }
+}
+
+/* Carousel counter badge styling */
+.carousel-counter {
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+}
+
+/* Loading animation for uploads */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.upload-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Touch feedback for media items */
+.compose-media-grid-responsive > div {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.compose-media-grid-responsive > div:active {
+  transform: scale(0.95);
+}
+
+/* Improve video/audio preview visibility */
+.compose-media-grid-responsive video {
+  max-height: 220px;
+  width: 100%;
+  border-radius: 12px;
+  display: block;
+}
+
+/* Location badge styling to match VogueX */
+.location-badge {
+  background: rgba(217, 70, 239, 0.1);
+  border: 1px solid rgba(217, 70, 239, 0.3);
+  border-radius: 12px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+/* Ensure compose box sticks when scrolling */
+@media (max-width: 700px) {
+  .feed-compose-wrapper {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.95);
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* Override glass button for mobile */
+@media (max-width: 700px) {
+  .glass-btn {
+    padding: 8px 16px !important;
+    font-size: 14px !important;
+    min-width: 60px;
+  }
+
+  .glass-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+}
